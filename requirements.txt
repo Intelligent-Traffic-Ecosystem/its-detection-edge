@@ -1,0 +1,18 @@
+# Core Vision & AI
+ultralytics==8.1.0
+opencv-python-headless
+numpy
+
+# Transport & Communication
+kafka-python-ng
+sqlitedict
+
+# API & Monitoring
+fastapi
+uvicorn[standard]
+prometheus-client
+
+# Utilities
+python-dotenv
+pydantic
+requests

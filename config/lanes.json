@@ -1,0 +1,15 @@
+{
+  "camera_id": "cam_01",
+  "lanes": [
+    {
+      "id": "lane_1",
+      "polygon": [[0, 0], [100, 0], [100, 100], [0, 100]],
+      "direction": "inbound"
+    },
+    {
+      "id": "lane_2",
+      "polygon": [[100, 0], [200, 0], [200, 100], [100, 100]],
+      "direction": "outbound"
+    }
+  ]
+}

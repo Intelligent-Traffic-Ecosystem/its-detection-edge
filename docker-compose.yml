@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  edge-camera-1:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - CAMERA_ID=cam_01
+      - CAMERA_URL=rtsp://mock-camera-1
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - kafka
+
+  edge-camera-2:
+    build: .
+    volumes:
+      - .:/app
+    environment:
+      - CAMERA_ID=cam_02
+      - CAMERA_URL=rtsp://mock-camera-2
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - kafka
+
+  # Note: This assumes Kafka is running elsewhere in the main project 
+  # or you can add it here for local testing.
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+    depends_on:
+      - zookeeper
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
