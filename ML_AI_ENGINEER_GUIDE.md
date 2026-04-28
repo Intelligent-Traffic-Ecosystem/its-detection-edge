@@ -237,6 +237,56 @@ traffic.events.raw
 
 When Kafka is enabled but unreachable, events are automatically stored in SQLite.
 
+## Kafka Setup
+
+Start Docker Desktop first, then start the Kafka broker:
+
+```bash
+docker compose up -d kafka
+```
+
+The project uses the official Apache Kafka Docker image. The Compose file exposes Kafka in two ways:
+
+- `localhost:9092` for running `python -m src.main` on your laptop.
+- `kafka:29092` for containers inside Docker Compose.
+
+Verify the broker is running:
+
+```bash
+docker compose ps
+```
+
+Verify the topic exists:
+
+```bash
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
+
+Expected topic:
+
+```text
+traffic.events.raw
+```
+
+Describe the topic:
+
+```bash
+docker compose exec kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic traffic.events.raw
+```
+
+Run the Python edge app with Kafka enabled:
+
+```bash
+python -m src.main
+```
+
+Expected log:
+
+```text
+Connected to Kafka successfully.
+Event sent to Kafka topic: traffic.events.raw
+```
+
 ## Offline Buffer
 
 Offline events are stored in:
