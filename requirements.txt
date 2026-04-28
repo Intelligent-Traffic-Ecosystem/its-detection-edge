@@ -1,6 +1,6 @@
 # Core Vision & AI
 ultralytics==8.1.0
-opencv-python-headless
+opencv-python
 numpy
 
 # Transport & Communication
@@ -17,3 +17,6 @@ prometheus-client
 python-dotenv
 pydantic
 requests
+
+# Testing
+pytest
