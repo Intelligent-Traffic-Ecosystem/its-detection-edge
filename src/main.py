@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from src.capture.camera import CameraStream
 from src.ml.detector import TrafficDetector
-from src.analytics.enricher import LaneEnricher
+from src.analytics.enricher import LaneEnricher, EventSerializer
 from src.analytics.speed import SpeedCalculator
 from src.transport.kafka_producer import TrafficKafkaProducer
 from src.transport.offline_buffer import OfflineBuffer
@@ -35,6 +35,7 @@ def main():
     stream = CameraStream(camera_url).start()
     detector = TrafficDetector()
     enricher = LaneEnricher(lanes_config)
+    serializer = EventSerializer(enricher)
     speed_calc = SpeedCalculator()
     buffer = OfflineBuffer()
     producer = TrafficKafkaProducer(kafka_servers, kafka_topic, buffer)
@@ -54,31 +55,29 @@ def main():
             # 1. Detect and Track
             timestamp = time.time()
             tracked_objects = detector.detect_and_track(frame)
+            if not tracked_objects:
+                time.sleep(0.05)
+                continue
             
-            # 2. Enrich and Calculate Metrics
+            # 2. Serialize & Enrich (Developer 2 layer)
+            events = serializer.serialize_batch(
+                vehicles=tracked_objects,
+                camera_id=camera_id,
+                frame_id=0,  # TODO: Add frame counter if needed
+                timestamp=timestamp
+            )
+            
+            # 3. Calculate speed and send
             current_ids = []
-            for obj in tracked_objects:
-                current_ids.append(obj["id"])
-                
-                # Map to lane
-                obj["lane_id"] = enricher.map_to_lane(obj["bbox"])
-                
-                # Calculate speed
-                obj["speed_kmh"] = speed_calc.calculate_speed(obj["id"], obj["bbox"], timestamp)
-                
-                # 3. Build message and send
-                event = {
-                    "camera_id": camera_id,
-                    "timestamp": timestamp,
-                    "vehicle": {
-                        "id": obj["id"],
-                        "type": obj["class"],
-                        "speed": obj["speed_kmh"],
-                        "lane": obj["lane_id"],
-                        "bbox": obj["bbox"]
-                    }
-                }
-                producer.send_event(event)
+            for i, obj in enumerate(tracked_objects):
+                current_ids.append(obj.get("vehicle_id") or obj.get("id"))
+                speed_kmh = speed_calc.calculate_speed(
+                    obj.get("vehicle_id") or obj.get("id"),
+                    obj.get("bbox"),
+                    timestamp
+                )
+                events[i]["speed_estimate"] = speed_kmh
+                producer.send_event(events[i])
 
             # Cleanup old tracking history
             speed_calc.clear_old_tracks(current_ids)
