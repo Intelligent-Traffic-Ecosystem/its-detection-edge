@@ -1,8 +1,15 @@
+import os
 from ultralytics import YOLO
 import logging
 
+# COCO class IDs for the 6 spec-required vehicle types
+# car=2, bus=5, truck=7, motorcycle=3, bicycle=1, person=0
+VEHICLE_CLASSES = {0: "pedestrian", 1: "bicycle", 2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
+
 class TrafficDetector:
-    def __init__(self, model_path="yolov8n.pt", confidence=0.4):
+    def __init__(self, model_path=None, confidence=None):
+        model_path = model_path or os.getenv("MODEL_PATH", "yolov8n.pt")
+        confidence = confidence or float(os.getenv("DETECTION_CONFIDENCE", "0.4"))
         self.model = YOLO(model_path)
         self.confidence = confidence
         logging.info(f"YOLOv8 model loaded from {model_path}")
@@ -32,13 +39,17 @@ class TrafficDetector:
             boxes = results[0].boxes.xyxy.cpu().numpy()
             ids = results[0].boxes.id.cpu().numpy().astype(int)
             clss = results[0].boxes.cls.cpu().numpy().astype(int)
+            confs = results[0].boxes.conf.cpu().numpy()  # fixed: per-box confidence
             
-            for box, track_id, cls in zip(boxes, ids, clss):
+            for box, track_id, cls, conf in zip(boxes, ids, clss, confs):
+                # Filter to spec-required vehicle classes only
+                if cls not in VEHICLE_CLASSES:
+                    continue
                 tracked_objects.append({
-                    "id": track_id,
-                    "bbox": box.tolist(), # [x1, y1, x2, y2]
-                    "class": self.model.names[cls],
-                    "confidence": float(results[0].boxes.conf[0]) # Simplified for now
+                    "id": int(track_id),
+                    "bbox": box.tolist(),  # [x1, y1, x2, y2]
+                    "class": VEHICLE_CLASSES[cls],
+                    "confidence": float(conf)
                 })
 
         return tracked_objects

@@ -1,5 +1,6 @@
 import sqlite3
 import json
+import threading
 import logging
 
 class OfflineBuffer:
@@ -9,6 +10,7 @@ class OfflineBuffer:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._lock = threading.Lock()
         self._create_table()
 
     def _create_table(self):
@@ -22,32 +24,80 @@ class OfflineBuffer:
         ''')
         self.conn.commit()
 
+    def _insert_payload_text(self, payload_text):
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("INSERT INTO events (payload) VALUES (?)", (payload_text,))
+            self.conn.commit()
+
     def store(self, event):
         """Saves a JSON event to the local database."""
         try:
-            cursor = self.conn.cursor()
-            cursor.execute("INSERT INTO events (payload) VALUES (?)", (json.dumps(event),))
-            self.conn.commit()
+            with self._lock:
+                cursor = self.conn.cursor()
+                cursor.execute("INSERT INTO events (payload) VALUES (?)", (json.dumps(event),))
+                self.conn.commit()
+            logging.info("Event stored in offline buffer.")
+        except Exception as e:
+            logging.error(f"Failed to store event in buffer: {e}")
+
+    def save(self, event_bytes):
+        """Saves a pre-serialized event payload to the local database."""
+        try:
+            if isinstance(event_bytes, bytes):
+                payload_text = event_bytes.decode("utf-8", errors="replace")
+            elif isinstance(event_bytes, str):
+                payload_text = event_bytes
+            else:
+                payload_text = json.dumps(event_bytes)
+            self._insert_payload_text(payload_text)
             logging.info("Event stored in offline buffer.")
         except Exception as e:
             logging.error(f"Failed to store event in buffer: {e}")
 
     def fetch_batch(self, limit=10):
         """Fetches a batch of events from the buffer."""
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT id, payload FROM events ORDER BY id ASC LIMIT ?", (limit,))
-        return cursor.fetchall()
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT id, payload FROM events ORDER BY id ASC LIMIT ?", (limit,))
+            return cursor.fetchall()
 
     def delete_batch(self, ids):
         """Deletes processed events from the buffer."""
         if not ids:
             return
-        cursor = self.conn.cursor()
-        placeholders = ','.join(['?'] * len(ids))
-        cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", ids)
-        self.conn.commit()
+        with self._lock:
+            cursor = self.conn.cursor()
+            placeholders = ','.join(['?'] * len(ids))
+            cursor.execute(f"DELETE FROM events WHERE id IN ({placeholders})", ids)
+            self.conn.commit()
+
+    def replay(self, producer, limit=50):
+        """Replays buffered events through a producer when connectivity returns."""
+        batch = self.fetch_batch(limit=limit)
+        if not batch:
+            return
+
+        sent_ids = []
+        for record_id, payload in batch:
+            try:
+                if hasattr(producer, "publish"):
+                    producer.publish(payload.encode("utf-8"))
+                elif hasattr(producer, "send_event"):
+                    producer.send_event(json.loads(payload))
+                else:
+                    raise AttributeError("Producer missing publish/send_event")
+                sent_ids.append(record_id)
+            except Exception as e:
+                logging.error(f"Failed to replay buffered event {record_id}: {e}")
+                break
+
+        if sent_ids:
+            self.delete_batch(sent_ids)
+            logging.info(f"Successfully flushed {len(sent_ids)} events from buffer.")
 
     def count(self):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM events")
-        return cursor.fetchone()[0]
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM events")
+            return cursor.fetchone()[0]

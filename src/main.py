@@ -24,6 +24,8 @@ def main():
     camera_url = os.getenv("CAMERA_URL", "tests/test_video.mp4")
     kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
+    frame_skip = int(os.getenv("FRAME_SKIP", "2"))
+    pixels_to_meters = float(os.getenv("PIXELS_TO_METERS", "0.05"))
     
     # Load lane config
     with open("config/lanes.json", "r") as f:
@@ -32,10 +34,10 @@ def main():
     # Initialize components
     logging.info("Initializing ITS Detection Edge Layer...")
     
-    stream = CameraStream(camera_url).start()
+    stream = CameraStream(camera_url, frame_skip=frame_skip).start()
     detector = TrafficDetector()
     enricher = LaneEnricher(lanes_config)
-    speed_calc = SpeedCalculator()
+    speed_calc = SpeedCalculator(pixels_to_meters=pixels_to_meters)
     buffer = OfflineBuffer()
     producer = TrafficKafkaProducer(kafka_servers, kafka_topic, buffer)
     

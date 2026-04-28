@@ -1,12 +1,15 @@
 import cv2
+import os
 import threading
 import time
 import logging
 
 class CameraStream:
-    def __init__(self, camera_url, retry_interval=5):
+    def __init__(self, camera_url, retry_interval=5, frame_skip=None):
         self.camera_url = camera_url
         self.retry_interval = retry_interval
+        self.frame_skip = frame_skip if frame_skip is not None else int(os.getenv("FRAME_SKIP", "2"))
+        self._frame_counter = 0
         self.cap = None
         self.frame = None
         self.stopped = False
@@ -30,8 +33,11 @@ class CameraStream:
 
             success, frame = self.cap.read()
             if success:
-                with self.lock:
-                    self.frame = frame
+                self._frame_counter += 1
+                # Only update the shared frame every FRAME_SKIP frames
+                if self._frame_counter % (self.frame_skip + 1) == 0:
+                    with self.lock:
+                        self.frame = frame
             else:
                 logging.warning("Failed to grab frame. Reconnecting...")
                 self.is_connected = False
