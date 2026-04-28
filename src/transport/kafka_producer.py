@@ -15,7 +15,9 @@ class TrafficKafkaProducer:
             self.producer = KafkaProducer(
                 bootstrap_servers=self.bootstrap_servers,
                 value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                acks='all',          # spec: acks=all for durability
                 retries=3,
+                linger_ms=50,        # small batch window for edge efficiency
                 request_timeout_ms=5000
             )
             logging.info("Connected to Kafka successfully.")

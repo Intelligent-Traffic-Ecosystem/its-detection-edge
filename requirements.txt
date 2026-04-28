@@ -5,7 +5,7 @@ numpy
 
 # Transport & Communication
 kafka-python-ng
-sqlitedict
+lapx           # ByteTrack dependency
 
 # API & Monitoring
 fastapi
