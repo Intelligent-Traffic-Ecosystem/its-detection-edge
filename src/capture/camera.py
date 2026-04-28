@@ -2,6 +2,7 @@ import cv2
 import threading
 import time
 import logging
+import os
 
 class CameraStream:
     def __init__(self, camera_url, retry_interval=5):
@@ -12,6 +13,8 @@ class CameraStream:
         self.stopped = False
         self.lock = threading.Lock()
         self.is_connected = False
+        self.is_file_source = self._is_file_source(camera_url)
+        self.read_interval = 0.0
 
     def start(self):
         """Starts the background thread for frame capture."""
@@ -32,7 +35,14 @@ class CameraStream:
             if success:
                 with self.lock:
                     self.frame = frame
+                if self.read_interval > 0:
+                    time.sleep(self.read_interval)
             else:
+                if self.is_file_source:
+                    logging.info("Reached end of video file, replaying: %s", self.camera_url)
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    continue
+
                 logging.warning("Failed to grab frame. Reconnecting...")
                 self.is_connected = False
                 time.sleep(0.1)
@@ -46,6 +56,7 @@ class CameraStream:
         self.cap = cv2.VideoCapture(self.camera_url)
         if self.cap.isOpened():
             self.is_connected = True
+            self.read_interval = self._get_file_read_interval()
             logging.info("Camera connected successfully.")
         else:
             self.is_connected = False
@@ -61,3 +72,16 @@ class CameraStream:
         self.stopped = True
         if self.cap:
             self.cap.release()
+
+    def _is_file_source(self, camera_url):
+        return isinstance(camera_url, str) and os.path.isfile(camera_url)
+
+    def _get_file_read_interval(self):
+        if not self.is_file_source:
+            return 0.0
+
+        fps = self.cap.get(cv2.CAP_PROP_FPS)
+        if fps and fps > 0:
+            return min(1.0 / fps, 0.1)
+
+        return 0.03

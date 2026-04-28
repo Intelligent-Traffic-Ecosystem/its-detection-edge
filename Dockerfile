@@ -19,5 +19,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the current directory contents into the container at /app
 COPY . .
 
-# Run main.py when the container launches
-CMD ["python", "src/main.py"]
+# Run the edge pipeline when the container launches
+CMD ["python", "-m", "src.main"]

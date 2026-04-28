@@ -1,12 +1,13 @@
 import sqlite3
 import json
 import logging
+import os
 
 class OfflineBuffer:
     def __init__(self, db_path="data/offline_buffer.db"):
-        # Ensure the data directory exists
-        import os
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        db_dir = os.path.dirname(db_path)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self._create_table()
@@ -28,7 +29,7 @@ class OfflineBuffer:
             cursor = self.conn.cursor()
             cursor.execute("INSERT INTO events (payload) VALUES (?)", (json.dumps(event),))
             self.conn.commit()
-            logging.info("Event stored in offline buffer.")
+            logging.debug("Event stored in offline buffer.")
         except Exception as e:
             logging.error(f"Failed to store event in buffer: {e}")
 
@@ -51,3 +52,6 @@ class OfflineBuffer:
         cursor = self.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM events")
         return cursor.fetchone()[0]
+
+    def close(self):
+        self.conn.close()
