@@ -1,97 +1,98 @@
 import os
 import time
 import json
-import logging
-import threading
+from datetime import datetime, timezone
+import cv2
 from dotenv import load_dotenv
+load_dotenv()
 
-from src.capture.camera import CameraStream
-from src.ml.detector import TrafficDetector
-from src.analytics.enricher import LaneEnricher
-from src.analytics.speed import SpeedCalculator
-from src.transport.kafka_producer import TrafficKafkaProducer
-from src.transport.offline_buffer import OfflineBuffer
-from src.api.server import start_api_server
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Import the classes we just built
+from capture.camera import VideoCaptureManager
+from ml.detector import VehicleDetector
+from analytics.speed import SpeedEstimator
 
 def main():
-    load_dotenv()
+    # 1. Setup Cvvonfiguration
+    camera_id = os.getenv("CAMERA_ID", "cam_test_01")
+    frame_skip = int(os.getenv("FRAME_SKIP", 3))
     
-    # Configuration
-    camera_id = os.getenv("CAMERA_ID", "cam_01")
-    camera_url = os.getenv("CAMERA_URL", "tests/test_video.mp4")
-    kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    kafka_topic = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
-    frame_skip = int(os.getenv("FRAME_SKIP", "2"))
-    pixels_to_meters = float(os.getenv("PIXELS_TO_METERS", "0.05"))
+    print(f"Starting B1 Edge Node for camera: {camera_id}")
     
-    # Load lane config
-    with open("config/lanes.json", "r") as f:
-        lanes_config = json.load(f)
-    
-    # Initialize components
-    logging.info("Initializing ITS Detection Edge Layer...")
-    
-    stream = CameraStream(camera_url, frame_skip=frame_skip).start()
-    detector = TrafficDetector()
-    enricher = LaneEnricher(lanes_config)
-    speed_calc = SpeedCalculator(pixels_to_meters=pixels_to_meters)
-    buffer = OfflineBuffer()
-    producer = TrafficKafkaProducer(kafka_servers, kafka_topic, buffer)
-    
-    # Start API server in background thread
-    threading.Thread(target=start_api_server, daemon=True).start()
-    
-    logging.info(f"Processing started for camera: {camera_id}")
-    
+    # 2. Initialize our modules
+    try:
+        camera = VideoCaptureManager()
+        detector = VehicleDetector(confidence_threshold=0.45)
+        speed_estimator = SpeedEstimator(pixel_to_metre=0.045, video_fps=25, frame_skip=3)
+    except Exception as e:
+        # The L4 DevOps team requires errors to be structured JSON
+        print(json.dumps({"level": "error", "message": str(e)}))
+        return
+
+    frame_id = 0
+
+    # 3. The Main Processing Loop
     try:
         while True:
-            frame = stream.get_frame()
+            # Grab a frame (this automatically handles the FRAME_SKIP logic!)
+            frame = camera.get_processed_frame()
+            
             if frame is None:
-                time.sleep(0.01)
+                # If the camera drops, the SRS says to retry every 5 seconds
+                print(json.dumps({"level": "warning", "message": "Camera dropped. Retrying in 5s..."}))
+                time.sleep(5)
+                # In a production environment, you might try to re-initialize the camera here
                 continue
-                
-            # 1. Detect and Track
-            timestamp = time.time()
-            tracked_objects = detector.detect_and_track(frame)
-            
-            # 2. Enrich and Calculate Metrics
-            current_ids = []
-            for obj in tracked_objects:
-                current_ids.append(obj["id"])
-                
-                # Map to lane
-                obj["lane_id"] = enricher.map_to_lane(obj["bbox"])
-                
-                # Calculate speed
-                obj["speed_kmh"] = speed_calc.calculate_speed(obj["id"], obj["bbox"], timestamp)
-                
-                # 3. Build message and send
-                event = {
-                    "camera_id": camera_id,
-                    "timestamp": timestamp,
-                    "vehicle": {
-                        "id": obj["id"],
-                        "type": obj["class"],
-                        "speed": obj["speed_kmh"],
-                        "lane": obj["lane_id"],
-                        "bbox": obj["bbox"]
-                    }
-                }
-                producer.send_event(event)
 
-            # Cleanup old tracking history
-            speed_calc.clear_old_tracks(current_ids)
+            frame_id += 1
             
-            # Control frame rate for edge processing
-            time.sleep(0.05) 
+            # Run the YOLO + ByteTrack inference
+            detected_vehicles = detector.detect_and_track(frame)
             
+            # Generate the current UTC timestamp (required by L2)
+            current_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+            # 4. Format and Output the Data
+            for vehicle in detected_vehicles:
+                # Build the exact JSON schema requested by the L2 team
+                calculated_speed = speed_estimator.estimate_speed(vehicle["vehicle_id"], vehicle["centroid"])
+                event_payload = {
+                    "camera_id": camera_id,
+                    "timestamp": current_time,
+                    "frame_id": frame_id,
+                    "vehicle_id": vehicle["vehicle_id"],
+                    "class": vehicle["class"],
+                    "confidence": vehicle["confidence"],
+                    "bbox": vehicle["bbox"],
+                    "centroid": vehicle["centroid"],
+                    "speed_estimate_kmh": calculated_speed
+                    # Note: lane_id and speed_estimate will be added in Week 2
+                }
+                
+                # Print the JSON string to the terminal so L4 can ingest it via ELK stack
+                print(json.dumps(event_payload))
+
+            # --- VISUAL DEBUGGING (Optional: Remove before giving to DevOps) ---
+            # Draw the bounding boxes on the frame so you can see it working
+            for v in detected_vehicles:
+                x, y, w, h = v["bbox"]["x"], v["bbox"]["y"], v["bbox"]["w"], v["bbox"]["h"]
+                cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                # Change your cv2.putText line to include the speed:
+                label = f"{v['class']} {v['vehicle_id']} {calculated_speed}km/h"
+                cv2.putText(frame, label, (x, y - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
+            cv2.imshow(f"B1 Edge - {camera_id}", frame)
+            
+            # Press 'q' on your keyboard to quit the video window
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
     except KeyboardInterrupt:
-        logging.info("Shutting down...")
+        print(json.dumps({"level": "info", "message": "Shutting down B1 edge node gracefully."}))
     finally:
-        stream.stop()
+        # Always release the camera hardware lock!
+        camera.cleanup()
+        cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()

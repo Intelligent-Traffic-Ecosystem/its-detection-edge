@@ -4,10 +4,13 @@ import threading
 import logging
 
 class OfflineBuffer:
-    def __init__(self, db_path="data/offline_buffer.db"):
-        # Ensure the data directory exists
-        import os
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    def __init__(self):
+        """
+        Initializes the local SQLite database. 
+        Unlike document databases, SQLite uses a single file to store relational tables.
+        """
+        # Pull the DB path from the .env file, default to 'buffer.db' locally
+        self.db_path = os.getenv("BUFFER_DB_PATH", "buffer.db")
         
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self._lock = threading.Lock()
@@ -63,8 +66,8 @@ class OfflineBuffer:
             return cursor.fetchall()
 
     def delete_batch(self, ids):
-        """Deletes processed events from the buffer."""
-        if not ids:
+        """Deletes events from the DB *after* they are successfully sent to Kafka."""
+        if not ids: 
             return
         with self._lock:
             cursor = self.conn.cursor()

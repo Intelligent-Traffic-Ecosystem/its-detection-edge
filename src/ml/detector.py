@@ -1,55 +1,80 @@
 import os
 from ultralytics import YOLO
-import logging
 
-# COCO class IDs for the 6 spec-required vehicle types
-# car=2, bus=5, truck=7, motorcycle=3, bicycle=1, person=0
-VEHICLE_CLASSES = {0: "pedestrian", 1: "bicycle", 2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
-
-class TrafficDetector:
-    def __init__(self, model_path=None, confidence=None):
-        model_path = model_path or os.getenv("MODEL_PATH", "yolov8n.pt")
-        confidence = confidence or float(os.getenv("DETECTION_CONFIDENCE", "0.4"))
+class VehicleDetector:
+    def __init__(self, confidence_threshold=0.45):
+        """
+        Initializes the YOLOv8 small model.
+        It will automatically download the 'yolov8n.pt' weights the first time it runs.
+        """
+        # YOLOv8n is the "nano" version, which is optimized for speed on edge devices like the Raspberry Pi.
+        model_path = os.getenv("MODEL_PATH", "yolov8n.pt")
         self.model = YOLO(model_path)
-        self.confidence = confidence
-        logging.info(f"YOLOv8 model loaded from {model_path}")
+        self.conf_threshold = float(os.getenv("CONFIDENCE_THRESHOLD", confidence_threshold))
+        self.tracker_config = os.getenv("TRACKER_CONFIG", "bytetrack.yaml")
+        
+        # In the COCO dataset (which YOLOv8 is trained on), the IDs for vehicles are:
+        # 0: pedestrian, 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck
+        self.target_classes = [0, 1, 2, 3, 5, 7]
+        
+        # Map the numeric IDs back to the string names required by the L2 layer
+        self.class_names = {
+            0: "pedestrian",
+            1: "bicycle",
+            2: "car",
+            3: "motorcycle",
+            5: "bus",
+            7: "truck"
+        }
 
     def detect_and_track(self, frame):
         """
-        Runs detection and tracking on a single frame.
-        Returns a list of tracked objects with metadata.
+        Takes an OpenCV video frame, runs detection, and assigns stable IDs.
+        Returns a list of dictionaries containing the extracted vehicle data.
         """
-        if frame is None:
-            return []
-
-        # Run tracking. persist=True maintains IDs across frames.
-        # tracker="bytetrack.yaml" is the default for YOLOv8 but explicit is better.
+        # Run YOLO inference with built-in ByteTrack tracking
         results = self.model.track(
-            source=frame,
-            conf=self.confidence,
-            persist=True,
-            tracker="bytetrack.yaml",
-            verbose=False
+            frame, 
+            persist=True,               # Keep IDs stable across frames
+            tracker=self.tracker_config,   # Use ByteTrack algorithm
+            conf=self.conf_threshold,   # Filter out low-confidence guesses
+            classes=self.target_classes,# Only look for our specific vehicle types
+            verbose=False               # Keep the terminal clean
         )
 
-        tracked_objects = []
-        
-        # results[0] contains the results for the single frame input
-        if results[0].boxes.id is not None:
-            boxes = results[0].boxes.xyxy.cpu().numpy()
-            ids = results[0].boxes.id.cpu().numpy().astype(int)
-            clss = results[0].boxes.cls.cpu().numpy().astype(int)
-            confs = results[0].boxes.conf.cpu().numpy()  # fixed: per-box confidence
-            
-            for box, track_id, cls, conf in zip(boxes, ids, clss, confs):
-                # Filter to spec-required vehicle classes only
-                if cls not in VEHICLE_CLASSES:
-                    continue
-                tracked_objects.append({
-                    "id": int(track_id),
-                    "bbox": box.tolist(),  # [x1, y1, x2, y2]
-                    "class": VEHICLE_CLASSES[cls],
-                    "confidence": float(conf)
-                })
+        detected_vehicles = []
 
-        return tracked_objects
+        # If the model didn't find anything, return an empty list early
+        if results[0].boxes.id is None:
+            return detected_vehicles
+
+        # Extract the data from the Ultralytics results object
+        boxes = results[0].boxes.xyxy.cpu().numpy()     # Bounding box coordinates
+        track_ids = results[0].boxes.id.int().cpu().tolist() # ByteTrack IDs
+        classes = results[0].boxes.cls.int().cpu().tolist()  # Vehicle class IDs
+        confidences = results[0].boxes.conf.cpu().tolist()   # Confidence scores
+
+        # Loop through every vehicle found in this specific frame
+        for box, track_id, cls_id, conf in zip(boxes, track_ids, classes, confidences):
+            x1, y1, x2, y2 = map(int, box)
+            
+            # Calculate width and height
+            w = x2 - x1
+            h = y2 - y1
+            
+            # Calculate the center point (centroid)
+            centroid_x = int(x1 + (w / 2))
+            centroid_y = int(y1 + (h / 2))
+
+            # Package the data exactly how the L2 team expects it
+            vehicle_data = {
+                "vehicle_id": f"veh_{track_id}",
+                "class": self.class_names[cls_id],
+                "confidence": round(conf, 2),
+                "bbox": {"x": x1, "y": y1, "w": w, "h": h},
+                "centroid": {"x": centroid_x, "y": centroid_y}
+            }
+            
+            detected_vehicles.append(vehicle_data)
+
+        return detected_vehicles
