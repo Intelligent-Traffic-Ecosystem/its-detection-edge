@@ -3,7 +3,7 @@ import os
 import threading
 import time
 import logging
-import os
+
 
 class CameraStream:
     def __init__(self, camera_url, retry_interval=5, frame_skip=None):
@@ -58,7 +58,7 @@ class CameraStream:
         logging.info(f"Connecting to camera: {self.camera_url}")
         if self.cap:
             self.cap.release()
-            
+
         self.cap = cv2.VideoCapture(self.camera_url)
         if self.cap.isOpened():
             self.is_connected = True
@@ -91,3 +91,59 @@ class CameraStream:
             return min(1.0 / fps, 0.1)
 
         return 0.03
+
+
+class VideoCaptureManager:
+    def __init__(self):
+        """
+        Pulls configuration from environment variables.
+        This keeps hardcoded values out of the code, making the DevOps engineer's job easier.
+        """
+        self.camera_type = os.getenv("CAMERA_TYPE", "usb").lower()
+        self.camera_index = int(os.getenv("CAMERA_INDEX", 0))
+        self.stream_url = os.getenv("CAMERA_STREAM_URL", "")
+        self.frame_skip = int(os.getenv("FRAME_SKIP", 3))
+
+        self.cap = self._initialize_camera()
+        self.frame_counter = 0
+
+    def _initialize_camera(self):
+        """
+        Connects to either a local USB webcam (V4L2) or a network stream (RTSP/HTTP).
+        """
+        if self.camera_type == "usb":
+            print(f"Connecting to USB Camera at /dev/video{self.camera_index}...")
+            cap = cv2.VideoCapture(self.camera_index)
+        elif self.camera_type == "ip":
+            print(f"Connecting to IP Camera stream...")
+            cap = cv2.VideoCapture(self.stream_url)
+        else:
+            raise ValueError(f"Unknown camera type: {self.camera_type}. Must be 'usb' or 'ip'.")
+
+        if not cap.isOpened():
+            raise ConnectionError("Camera failed to open. Check connections or URL.")
+
+        return cap
+
+    def get_processed_frame(self):
+        """
+        Continuously pulls frames from the buffer, but only returns one
+        when it meets the FRAME_SKIP interval.
+        """
+        while True:
+            success, frame = self.cap.read()
+
+            if not success:
+                print("Warning: Camera stream dropped.")
+                return None
+
+            self.frame_counter += 1
+
+            if self.frame_counter % self.frame_skip == 0:
+                resized_frame = cv2.resize(frame, (640, 480))
+                return resized_frame
+
+    def cleanup(self):
+        """Releases the hardware lock on the camera."""
+        if self.cap:
+            self.cap.release()

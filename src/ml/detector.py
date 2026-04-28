@@ -6,6 +6,7 @@ import pickle
 # car=2, bus=5, truck=7, motorcycle=3, bicycle=1, person=0
 VEHICLE_CLASSES = {0: "pedestrian", 1: "bicycle", 2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 
+
 class TrafficDetector:
     DEFAULT_CLASSES = {"car", "motorcycle", "bus", "truck", "person", "bicycle"}
 
@@ -120,3 +121,55 @@ class TrafficDetector:
                 })
 
         return tracked_objects
+
+
+class VehicleDetector:
+    """Simplified detector interface compatible with the kisaja branch implementation."""
+
+    def __init__(self, confidence_threshold=0.45):
+        from ultralytics import YOLO
+
+        model_path = os.getenv("MODEL_PATH", "yolov8n.pt")
+        self.model = YOLO(model_path)
+        self.conf_threshold = float(os.getenv("CONFIDENCE_THRESHOLD", confidence_threshold))
+        self.tracker_config = os.getenv("TRACKER_CONFIG", "bytetrack.yaml")
+        self.target_classes = list(VEHICLE_CLASSES.keys())
+        self.class_names = VEHICLE_CLASSES
+
+    def detect_and_track(self, frame):
+        """Returns a list of vehicle dicts with vehicle_id, class, confidence, bbox, centroid."""
+        results = self.model.track(
+            frame,
+            persist=True,
+            tracker=self.tracker_config,
+            conf=self.conf_threshold,
+            classes=self.target_classes,
+            verbose=False,
+        )
+
+        detected_vehicles = []
+
+        if results[0].boxes.id is None:
+            return detected_vehicles
+
+        boxes = results[0].boxes.xyxy.cpu().numpy()
+        track_ids = results[0].boxes.id.int().cpu().tolist()
+        classes = results[0].boxes.cls.int().cpu().tolist()
+        confidences = results[0].boxes.conf.cpu().tolist()
+
+        for box, track_id, cls_id, conf in zip(boxes, track_ids, classes, confidences):
+            x1, y1, x2, y2 = map(int, box)
+            w = x2 - x1
+            h = y2 - y1
+            centroid_x = int(x1 + w / 2)
+            centroid_y = int(y1 + h / 2)
+
+            detected_vehicles.append({
+                "vehicle_id": f"veh_{track_id}",
+                "class": self.class_names[cls_id],
+                "confidence": round(conf, 2),
+                "bbox": {"x": x1, "y": y1, "w": w, "h": h},
+                "centroid": {"x": centroid_x, "y": centroid_y},
+            })
+
+        return detected_vehicles

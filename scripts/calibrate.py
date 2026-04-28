@@ -1,6 +1,8 @@
 import argparse
 import json
+import os
 from pathlib import Path
+from datetime import datetime, timezone
 
 import cv2
 
@@ -68,6 +70,7 @@ class LaneCalibrator:
         payload = {
             "camera_id": self.camera_id,
             "lanes": self.lanes,
+            "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
         }
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self.output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -108,7 +111,7 @@ def main():
     parser = argparse.ArgumentParser(description="Draw lane polygons on the first frame of a video/camera feed.")
     parser.add_argument("--source", default="tests/test.mp4", help="Video file, camera index, or RTSP URL.")
     parser.add_argument("--output", default="config/lanes.json", help="Path to write lane config JSON.")
-    parser.add_argument("--camera-id", default="cam_01", help="Camera ID to write into the lane config.")
+    parser.add_argument("--camera-id", default=os.getenv("CAMERA_ID", "cam_01"), help="Camera ID to write into the lane config.")
     args = parser.parse_args()
 
     source = int(args.source) if args.source.isdigit() else args.source

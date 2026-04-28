@@ -5,11 +5,14 @@ import logging
 import os
 
 class OfflineBuffer:
-    def __init__(self, db_path="data/offline_buffer.db"):
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = os.getenv("BUFFER_DB_PATH", "data/offline_buffer.db")
+
         db_dir = os.path.dirname(db_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
-        
+
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self._lock = threading.Lock()
         self._create_table()
