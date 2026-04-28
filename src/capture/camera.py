@@ -1,6 +1,7 @@
 import cv2
 import os
 
+
 class VideoCaptureManager:
     def __init__(self):
         """

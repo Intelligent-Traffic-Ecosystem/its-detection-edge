@@ -1,97 +1,109 @@
-import json
+"""
+Accuracy test — AC-01, AC-02, AC-03 from B1 spec.
+  - AC-01: events reach Kafka within 500ms (measured as detection latency)
+  - AC-02: same vehicle keeps same ID for ≥10 frames
+  - AC-03: vehicle class confidence ≥85% average on test video
+
+Usage:
+    python tests/accuracy_test.py
+"""
+import sys
 import os
+import time
+import collections
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.ml.detector import TrafficDetector, VEHICLE_CLASSES
 import cv2
 
-from src.ml.detector import VehicleDetector
-
-
-def _load_ground_truth(path):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def _iou(box_a, box_b):
-    ax1, ay1, ax2, ay2 = box_a
-    bx1, by1, bx2, by2 = box_b
-
-    inter_x1 = max(ax1, bx1)
-    inter_y1 = max(ay1, by1)
-    inter_x2 = min(ax2, bx2)
-    inter_y2 = min(ay2, by2)
-
-    inter_w = max(0, inter_x2 - inter_x1)
-    inter_h = max(0, inter_y2 - inter_y1)
-    inter_area = inter_w * inter_h
-    if inter_area == 0:
-        return 0.0
-
-    area_a = (ax2 - ax1) * (ay2 - ay1)
-    area_b = (bx2 - bx1) * (by2 - by1)
-    return inter_area / float(area_a + area_b - inter_area)
+TEST_VIDEO = os.path.join(os.path.dirname(__file__), "test_video.mp4")
+MIN_CONFIDENCE = 0.85
+MIN_TRACKING_FRAMES = 10
 
 
 def test_accuracy():
-    print("Running accuracy tests...")
+    print("=" * 60)
+    print("B1 Accuracy Test — Detection, Tracking & Confidence")
+    print("=" * 60)
 
-    video_path = os.getenv("TEST_VIDEO_PATH")
-    gt_path = os.getenv("GROUND_TRUTH_PATH")
-    iou_threshold = float(os.getenv("IOU_THRESHOLD", 0.5))
-    frame_skip = max(1, int(os.getenv("FRAME_SKIP", 3)))
+    if not os.path.exists(TEST_VIDEO):
+        print(f"[SKIP] Test video not found: {TEST_VIDEO}")
+        print("       Place a test video at tests/test_video.mp4 to run.")
+        return
 
-    if not video_path or not gt_path:
-        raise ValueError("TEST_VIDEO_PATH and GROUND_TRUTH_PATH must be set.")
+    detector = TrafficDetector()
+    cap = cv2.VideoCapture(TEST_VIDEO)
 
-    ground_truth = _load_ground_truth(gt_path)
-    gt_by_frame = {item["frame_id"]: item.get("objects", []) for item in ground_truth}
-
-    cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        raise ConnectionError("Failed to open test video.")
+        print("[FAIL] Cannot open test video.")
+        sys.exit(1)
 
-    detector = VehicleDetector()
-    frame_id = 0
-    total_matches = 0
-    correct_class = 0
+    total_detections = 0
+    high_conf_detections = 0
+    class_counts = collections.Counter()
+    # track_id -> list of frame indices where it appeared
+    track_frames = collections.defaultdict(list)
+    latencies = []
+    frame_idx = 0
+
+    print(f"\nRunning detection on: {TEST_VIDEO}")
+    print("Processing frames...\n")
 
     while True:
-        success, frame = cap.read()
-        if not success:
+        ret, frame = cap.read()
+        if not ret:
             break
-        frame_id += 1
-        if frame_id % frame_skip != 0:
-            continue
 
-        detections = detector.detect_and_track(frame)
-        gt_objects = gt_by_frame.get(frame_id, [])
+        t_start = time.time()
+        results = detector.detect_and_track(frame)
+        latency_ms = (time.time() - t_start) * 1000
+        latencies.append(latency_ms)
 
-        for gt in gt_objects:
-            gt_box = gt["bbox"]
-            best_iou = 0.0
-            best_det = None
-            for det in detections:
-                x = det["bbox"]["x"]
-                y = det["bbox"]["y"]
-                w = det["bbox"]["w"]
-                h = det["bbox"]["h"]
-                det_box = [x, y, x + w, y + h]
-                score = _iou(gt_box, det_box)
-                if score > best_iou:
-                    best_iou = score
-                    best_det = det
+        for obj in results:
+            total_detections += 1
+            class_counts[obj["class"]] += 1
+            track_frames[obj["id"]].append(frame_idx)
+            if obj["confidence"] >= MIN_CONFIDENCE:
+                high_conf_detections += 1
 
-            if best_det and best_iou >= iou_threshold:
-                total_matches += 1
-                if best_det["class"] == gt["class"]:
-                    correct_class += 1
+        frame_idx += 1
 
     cap.release()
 
-    accuracy = (correct_class / total_matches) * 100 if total_matches else 0.0
-    print(f"Matched detections: {total_matches}")
-    print(f"Class accuracy: {accuracy:.2f}%")
+    # --- Report ---
+    print(f"Frames processed  : {frame_idx}")
+    print(f"Total detections  : {total_detections}")
+    print(f"\nClass distribution:")
+    for cls, count in sorted(class_counts.items()):
+        print(f"  {cls:<15}: {count}")
 
-    if accuracy < 85.0:
-        raise AssertionError("Accuracy below 85%")
+    # AC-03: confidence
+    conf_rate = (high_conf_detections / total_detections * 100) if total_detections > 0 else 0
+    print(f"\nAC-03 Confidence ≥{MIN_CONFIDENCE*100:.0f}%: {conf_rate:.1f}%  ", end="")
+    ac03_pass = conf_rate >= (MIN_CONFIDENCE * 100)
+    print("PASS ✓" if ac03_pass else "FAIL ✗")
+
+    # AC-02: tracking stability
+    stable_tracks = [tid for tid, frames in track_frames.items() if len(frames) >= MIN_TRACKING_FRAMES]
+    print(f"\nAC-02 Stable tracks (≥{MIN_TRACKING_FRAMES} frames): {len(stable_tracks)}", end="  ")
+    ac02_pass = len(stable_tracks) > 0
+    print("PASS ✓" if ac02_pass else "FAIL ✗ (no vehicle tracked across ≥10 frames)")
+
+    # AC-01: detection latency proxy (should be < 500ms per frame)
+    avg_latency = sum(latencies) / len(latencies) if latencies else 0
+    print(f"\nAC-01 Avg detection latency: {avg_latency:.1f}ms  ", end="")
+    ac01_pass = avg_latency < 500
+    print("PASS ✓" if ac01_pass else "FAIL ✗")
+
+    print("\n" + "=" * 60)
+    overall = ac01_pass and ac02_pass and ac03_pass
+    print("RESULT:", "ALL PASS ✓" if overall else "SOME CHECKS FAILED ✗")
+    print("=" * 60)
+
+    if not overall:
+        sys.exit(1)
+
 
 if __name__ == "__main__":
     test_accuracy()

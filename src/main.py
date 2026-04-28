@@ -12,7 +12,7 @@ from ml.detector import VehicleDetector
 from analytics.speed import SpeedEstimator
 
 def main():
-    # 1. Setup Configuration
+    # 1. Setup Cvvonfiguration
     camera_id = os.getenv("CAMERA_ID", "cam_test_01")
     frame_skip = int(os.getenv("FRAME_SKIP", 3))
     
