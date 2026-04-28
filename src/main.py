@@ -5,6 +5,7 @@ import logging
 import threading
 from datetime import datetime, timezone
 import cv2
+import numpy as np
 from dotenv import load_dotenv
 
 from src.capture.camera import CameraStream
@@ -36,6 +37,7 @@ def main():
     log_detections = os.getenv("LOG_DETECTIONS", "false").lower() == "true"
     kafka_enabled = os.getenv("KAFKA_ENABLED", "true").lower() == "true"
     display_video = os.getenv("DISPLAY_VIDEO", "false").lower() == "true"
+    draw_lanes = os.getenv("DRAW_LANES", "true").lower() == "true"
     
     # Load lane config
     with open("config/lanes.json", "r") as f:
@@ -44,13 +46,14 @@ def main():
     # Initialize components
     logging.info("Initializing ITS Detection Edge Layer...")
     logging.info(
-        "Config: camera_id=%s camera_url=%s model=%s confidence=%.2f frame_skip=%s display_video=%s kafka_enabled=%s kafka=%s topic=%s",
+        "Config: camera_id=%s camera_url=%s model=%s confidence=%.2f frame_skip=%s display_video=%s draw_lanes=%s kafka_enabled=%s kafka=%s topic=%s",
         camera_id,
         camera_url,
         model_path,
         confidence,
         frame_skip,
         display_video,
+        draw_lanes,
         kafka_enabled,
         kafka_servers,
         kafka_topic,
@@ -143,7 +146,7 @@ def main():
             speed_calc.clear_old_tracks(current_ids)
 
             if display_video:
-                annotated_frame = draw_detections(frame, tracked_objects)
+                annotated_frame = draw_detections(frame, tracked_objects, lanes_config if draw_lanes else None)
                 cv2.imshow("ITS Detection Edge - press q to quit", annotated_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     logging.info("Display quit requested.")
@@ -171,14 +174,20 @@ def main():
         producer.close()
         buffer.close()
 
-def draw_detections(frame, tracked_objects):
+def draw_detections(frame, tracked_objects, lanes_config=None):
     annotated = frame.copy()
     green = (0, 255, 0)
     black = (0, 0, 0)
+    lane_color = (255, 180, 0)
+
+    if lanes_config:
+        annotated = draw_lanes_overlay(annotated, lanes_config, lane_color)
 
     for obj in tracked_objects:
         x1, y1, x2, y2 = [int(value) for value in obj["bbox"]]
-        label = f'{obj["vehicle_id"]} {obj["speed_kmh"]:.1f} km/h'
+        lane_id = obj.get("lane_id", "unknown")
+        vehicle_type = obj.get("class", "vehicle")
+        label = f'{obj["vehicle_id"]} {vehicle_type} {lane_id} {obj["speed_kmh"]:.1f} km/h'
 
         cv2.rectangle(annotated, (x1, y1), (x2, y2), green, 2)
 
@@ -204,6 +213,43 @@ def draw_detections(frame, tracked_objects):
         )
 
     return annotated
+
+
+def draw_lanes_overlay(frame, lanes_config, lane_color):
+    overlay = frame.copy()
+    lanes = lanes_config.get("lanes", [])
+
+    for lane in lanes:
+        polygon = lane.get("polygon", [])
+        if len(polygon) < 3:
+            continue
+
+        points = np.array(polygon, dtype=np.int32)
+        cv2.fillPoly(overlay, [points], lane_color)
+
+    frame = cv2.addWeighted(overlay, 0.18, frame, 0.82, 0)
+
+    for lane in lanes:
+        polygon = lane.get("polygon", [])
+        if len(polygon) < 3:
+            continue
+
+        points = np.array(polygon, dtype=np.int32)
+        cv2.polylines(frame, [points], isClosed=True, color=lane_color, thickness=2)
+        label_x, label_y = polygon[0]
+        label = str(lane.get("id", "lane"))
+        cv2.putText(
+            frame,
+            label,
+            (int(label_x), max(int(label_y) - 8, 20)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            lane_color,
+            2,
+            cv2.LINE_AA,
+        )
+
+    return frame
 
 
 if __name__ == "__main__":

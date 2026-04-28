@@ -13,7 +13,7 @@ The ML / AI engineer owns:
 - Frame skipping for edge performance.
 - Speed estimation from tracked object movement.
 - Lane mapping using calibrated polygons.
-- Visual output with green bounding boxes, ID, and speed.
+- Visual output with green bounding boxes, ID, vehicle type, lane ID, and speed.
 - Kafka event publishing.
 - SQLite offline buffering when Kafka is unavailable.
 - Testing and demo verification for the detection pipeline.
@@ -59,6 +59,7 @@ CAMERA_URL=tests/test.mp4
 STATUS_INTERVAL_SECONDS=5
 LOG_DETECTIONS=false
 DISPLAY_VIDEO=true
+DRAW_LANES=true
 
 MODEL_PATH=yolov8n.pt
 DETECTION_CONFIDENCE=0.4
@@ -168,15 +169,20 @@ The app opens an OpenCV window and draws:
 
 - Green bounding box.
 - Vehicle ID.
+- Vehicle type.
+- Lane ID.
 - Estimated speed.
+- Lane polygons from `config/lanes.json`, when `DRAW_LANES=true`.
 
 Example label:
 
 ```text
-veh_12 34.5 km/h
+veh_12 car lane_1 34.5 km/h
 ```
 
 Press `q` inside the video window to stop the app.
+
+If a vehicle shows `unknown`, its bottom-center point is outside every lane polygon. Calibrate `config/lanes.json` for the selected video.
 
 If the popup does not appear, reinstall GUI OpenCV:
 
@@ -317,12 +323,14 @@ Before demo:
 
 - Set `CAMERA_URL` to the correct video.
 - Set `DISPLAY_VIDEO=true`.
+- Set `DRAW_LANES=true`.
 - Set `KAFKA_ENABLED=false` if Kafka is not running.
 - Set `FRAME_SKIP=0` for smoother visual boxes.
 - Clear old buffer if you want a clean count.
 - Run `python -m src.main`.
 - Confirm the video window opens.
-- Confirm green boxes show vehicle ID and speed.
+- Confirm lane polygons show lane IDs.
+- Confirm green boxes show vehicle ID, vehicle type, lane ID, and speed.
 - Press `q` to stop.
 
 ## Common Issues
