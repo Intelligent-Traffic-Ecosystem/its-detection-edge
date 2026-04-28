@@ -1,15 +1,17 @@
-import cv2
+import os
 from ultralytics import YOLO
 
 class VehicleDetector:
     def __init__(self, confidence_threshold=0.45):
         """
-        Initializes the YOLOv8 nano model.
+        Initializes the YOLOv8 small model.
         It will automatically download the 'yolov8n.pt' weights the first time it runs.
         """
-        # YOLOv8n is chosen because it runs fast on a Raspberry Pi 5 CPU
-        self.model = YOLO('yolov8s.pt') 
-        self.conf_threshold = confidence_threshold
+        # YOLOv8n is the "nano" version, which is optimized for speed on edge devices like the Raspberry Pi.
+        model_path = os.getenv("MODEL_PATH", "yolov8n.pt")
+        self.model = YOLO(model_path)
+        self.conf_threshold = float(os.getenv("CONFIDENCE_THRESHOLD", confidence_threshold))
+        self.tracker_config = os.getenv("TRACKER_CONFIG", "bytetrack.yaml")
         
         # In the COCO dataset (which YOLOv8 is trained on), the IDs for vehicles are:
         # 0: pedestrian, 1: bicycle, 2: car, 3: motorcycle, 5: bus, 7: truck
@@ -34,7 +36,7 @@ class VehicleDetector:
         results = self.model.track(
             frame, 
             persist=True,               # Keep IDs stable across frames
-            tracker="bytetrack.yaml",   # Use ByteTrack algorithm
+            tracker=self.tracker_config,   # Use ByteTrack algorithm
             conf=self.conf_threshold,   # Filter out low-confidence guesses
             classes=self.target_classes,# Only look for our specific vehicle types
             verbose=False               # Keep the terminal clean
