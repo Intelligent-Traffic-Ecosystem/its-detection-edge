@@ -5,6 +5,8 @@ numpy
 
 # Transport & Communication
 kafka-python-ng
+confluent-kafka
+lapx           # ByteTrack dependency
 
 # API & Monitoring
 fastapi

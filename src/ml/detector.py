@@ -1,18 +1,26 @@
+import os
 import logging
 import pickle
+
+# COCO class IDs for the 6 spec-required vehicle types
+# car=2, bus=5, truck=7, motorcycle=3, bicycle=1, person=0
+VEHICLE_CLASSES = {0: "pedestrian", 1: "bicycle", 2: "car", 3: "motorcycle", 5: "bus", 7: "truck"}
 
 class TrafficDetector:
     DEFAULT_CLASSES = {"car", "motorcycle", "bus", "truck", "person", "bicycle"}
 
     def __init__(
         self,
-        model_path="yolov8n.pt",
-        confidence=0.4,
+        model_path=None,
+        confidence=None,
         tracker_config="bytetrack.yaml",
         frame_skip=0,
         allowed_classes=None,
         model=None,
     ):
+        model_path = model_path or os.getenv("MODEL_PATH", "yolov8n.pt")
+        confidence = confidence if confidence is not None else float(os.getenv("DETECTION_CONFIDENCE", "0.4"))
+
         if model is None:
             model = self._load_yolo_model(model_path)
 

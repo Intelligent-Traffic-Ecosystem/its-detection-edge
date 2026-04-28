@@ -32,7 +32,8 @@ def main():
     model_path = os.getenv("MODEL_PATH", "yolov8n.pt")
     confidence = float(os.getenv("DETECTION_CONFIDENCE", "0.4"))
     tracker_config = os.getenv("TRACKER_CONFIG", "bytetrack.yaml")
-    frame_skip = int(os.getenv("FRAME_SKIP", "0"))
+    frame_skip = int(os.getenv("FRAME_SKIP", "2"))
+    pixels_to_meters = float(os.getenv("PIXELS_TO_METERS", "0.05"))
     status_interval = float(os.getenv("STATUS_INTERVAL_SECONDS", "5"))
     log_detections = os.getenv("LOG_DETECTIONS", "false").lower() == "true"
     kafka_enabled = os.getenv("KAFKA_ENABLED", "true").lower() == "true"
@@ -68,11 +69,11 @@ def main():
     )
 
     logging.info("Starting camera stream...")
-    stream = CameraStream(camera_url).start()
+    stream = CameraStream(camera_url, frame_skip=frame_skip).start()
 
     logging.info("Loading lane enrichment and speed modules...")
     enricher = LaneEnricher(lanes_config)
-    speed_calc = SpeedCalculator()
+    speed_calc = SpeedCalculator(pixels_to_meters=pixels_to_meters)
 
     logging.info("Opening offline buffer and Kafka producer...")
     buffer = OfflineBuffer()
