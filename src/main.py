@@ -25,11 +25,12 @@ def main():
     kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
     frame_skip = int(os.getenv("FRAME_SKIP", "2"))
-    pixels_to_meters = float(os.getenv("PIXELS_TO_METERS", "0.05"))
     
     # Load lane config
     with open("config/lanes.json", "r") as f:
         lanes_config = json.load(f)
+        
+    pixels_to_meters = lanes_config.get("pixels_to_meters", float(os.getenv("PIXELS_TO_METERS", "0.05")))
     
     # Initialize components
     logging.info("Initializing ITS Detection Edge Layer...")
