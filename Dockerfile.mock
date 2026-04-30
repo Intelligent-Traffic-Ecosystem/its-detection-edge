@@ -1,0 +1,9 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install --no-cache-dir kafka-python-ng
+
+COPY scripts/mock_producer.py ./mock_producer.py
+
+CMD ["python", "mock_producer.py"]
