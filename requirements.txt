@@ -17,3 +17,7 @@ prometheus-client
 python-dotenv
 pydantic
 requests
+
+# Testing
+pytest
+pytest-cov
