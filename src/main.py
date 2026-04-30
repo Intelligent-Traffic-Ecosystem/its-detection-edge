@@ -26,7 +26,7 @@ def main():
     
     # Configuration
     camera_id = os.getenv("CAMERA_ID", "cam_01")
-    camera_url = os.getenv("CAMERA_URL", "tests/tst.mp4")
+    camera_url = os.getenv("CAMERA_URL", "tests/test.mp4")
     kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
     model_path = os.getenv("MODEL_PATH", "yolov8n.pt")
@@ -65,7 +65,7 @@ def main():
         model_path=model_path,
         confidence=confidence,
         tracker_config=tracker_config,
-        frame_skip=frame_skip,
+        frame_skip=0,
     )
 
     logging.info("Starting camera stream...")
@@ -87,16 +87,19 @@ def main():
     frames_seen = 0
     detections_seen = 0
     last_status_time = time.time()
+    last_frame = None
 
     try:
         while True:
             frame = stream.get_frame()
-            if frame is None:
+            if frame is None or frame is last_frame:
                 if time.time() - last_status_time >= status_interval:
                     logging.info("Waiting for frames from %s...", camera_url)
                     last_status_time = time.time()
                 time.sleep(0.01)
                 continue
+                
+            last_frame = frame
 
             frames_seen += 1
 
@@ -164,7 +167,7 @@ def main():
                 last_status_time = time.time()
             
             # Control frame rate for edge processing
-            time.sleep(0.05) 
+            # time.sleep(0.05) 
             
     except KeyboardInterrupt:
         logging.info("Shutting down...")
