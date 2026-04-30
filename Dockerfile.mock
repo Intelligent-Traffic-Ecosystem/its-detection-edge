@@ -2,7 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir kafka-python-ng
+COPY requirements.mock.txt .
+RUN pip install --no-cache-dir -r requirements.mock.txt
 
 COPY scripts/mock_producer.py ./mock_producer.py
 
