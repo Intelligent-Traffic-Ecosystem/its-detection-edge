@@ -43,3 +43,26 @@ class LaneEnricher:
                             inside = not inside
             p1x, p1y = p2x, p2y
         return inside
+
+
+class EventSerializer:
+    def __init__(self, lane_enricher: LaneEnricher):
+        self.lane_enricher = lane_enricher
+
+    def serialize_event(self, vehicle: Dict[str, Any], camera_id: str, frame_id: Optional[int] = None, timestamp: Any = None) -> Dict[str, Any]:
+        """Convert a raw detection dict into the strict event schema."""
+        centroid = vehicle.get("centroid", {})
+        lane_id = self.lane_enricher.map_to_lane(centroid)
+        
+        return {
+            "camera_id": camera_id,
+            "timestamp": str(timestamp) if timestamp is not None else None,
+            "frame_id": frame_id if frame_id is not None else vehicle.get("frame_id"),
+            "vehicle_id": vehicle.get("vehicle_id") or f"veh_{vehicle.get('id', 'unknown')}",
+            "class": vehicle.get("class", vehicle.get("label", "unknown")),
+            "confidence": vehicle.get("confidence", 0.0),
+            "bbox": vehicle.get("bbox_xywh", {}),
+            "centroid": centroid,
+            "lane_id": lane_id,
+            "speed_estimate": vehicle.get("speed_kmh", vehicle.get("speed", 0.0))
+        }
