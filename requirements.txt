@@ -20,3 +20,4 @@ requests
 
 # Testing
 pytest
+pytest-cov
