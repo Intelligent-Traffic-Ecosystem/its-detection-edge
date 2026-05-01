@@ -1,12 +1,14 @@
+from typing import Dict, List, Any, Optional
+
 class LaneEnricher:
-    def __init__(self, lanes_config):
+    def __init__(self, lanes_config: Dict[str, Any]):
         """
         lanes_config is a list of dicts like:
         [{"id": "lane_1", "polygon": [[x1, y1], [x2, y2], ...]}, ...]
         """
         self.lanes = lanes_config.get("lanes", [])
 
-    def map_to_lane(self, bbox):
+    def map_to_lane(self, bbox: List[float]) -> Optional[str]:
         """
         Maps a bounding box (bottom-center point) to a lane ID.
         bbox format: [x1, y1, x2, y2]
@@ -16,13 +18,16 @@ class LaneEnricher:
         y = bbox[3]
         
         for lane in self.lanes:
-            if self._is_point_in_polygon(x, y, lane["polygon"]):
-                return lane["id"]
+            if self._is_point_in_polygon(x, y, lane.get("polygon", [])):
+                return lane.get("id")
         
         return "unknown"
 
-    def _is_point_in_polygon(self, x, y, polygon):
+    def _is_point_in_polygon(self, x: float, y: float, polygon: List[List[float]]) -> bool:
         """Ray Casting algorithm for point-in-polygon test."""
+        if not polygon:
+            return False
+            
         n = len(polygon)
         inside = False
         p1x, p1y = polygon[0]
