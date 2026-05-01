@@ -1,4 +1,5 @@
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
+from datetime import datetime, timezone
 
 class LaneEnricher:
     def __init__(self, lanes_config: Dict[str, Any]):
@@ -49,14 +50,45 @@ class EventSerializer:
     def __init__(self, lane_enricher: LaneEnricher):
         self.lane_enricher = lane_enricher
 
-    def serialize_event(self, vehicle: Dict[str, Any], camera_id: str, frame_id: Optional[int] = None, timestamp: Any = None) -> Dict[str, Any]:
+    def _format_timestamp(self, ts: Union[float, int, str, datetime, None]) -> str:
+        """Helper to ensure timestamp is UTC ISO 8601 ending in Z."""
+        if ts is None:
+            return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        elif isinstance(ts, (float, int)):
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+        elif isinstance(ts, datetime):
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return ts.isoformat().replace("+00:00", "Z")
+        elif isinstance(ts, str):
+            if "+00:00" in ts:
+                return ts.replace("+00:00", "Z")
+            if not ts.endswith("Z"):
+                return ts + "Z"
+            return ts
+        return str(ts)
+
+    def _get_centroid(self, vehicle: Dict[str, Any]) -> Dict[str, float]:
+        """Extract or calculate the centroid."""
+        if "centroid" in vehicle and isinstance(vehicle["centroid"], dict):
+            return vehicle["centroid"]
+        
+        # Calculate from bbox if available
+        bbox = vehicle.get("bbox")
+        if bbox and len(bbox) >= 4:
+            x1, y1, x2, y2 = bbox[:4]
+            return {"x": round((x1 + x2) / 2, 2), "y": round((y1 + y2) / 2, 2)}
+            
+        return {"x": 0.0, "y": 0.0}
+
+    def serialize_event(self, vehicle: Dict[str, Any], camera_id: str, frame_id: Optional[int] = None, timestamp: Union[float, int, str, datetime, None] = None) -> Dict[str, Any]:
         """Convert a raw detection dict into the strict event schema."""
-        centroid = vehicle.get("centroid", {})
+        centroid = self._get_centroid(vehicle)
         lane_id = self.lane_enricher.map_to_lane(centroid)
         
         return {
             "camera_id": camera_id,
-            "timestamp": str(timestamp) if timestamp is not None else None,
+            "timestamp": self._format_timestamp(timestamp),
             "frame_id": frame_id if frame_id is not None else vehicle.get("frame_id"),
             "vehicle_id": vehicle.get("vehicle_id") or f"veh_{vehicle.get('id', 'unknown')}",
             "class": vehicle.get("class", vehicle.get("label", "unknown")),
