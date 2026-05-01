@@ -86,7 +86,7 @@ def test_serialize_event_bbox_fallback(serializer):
         "id": 7,
         "class": "car",
         "confidence": 0.5,
-        "bbox": [0, 0, 10, 10],
+        "bbox": [10, 10, 0, 0],
     }
 
     event = serializer.serialize_event(fake_vehicle, camera_id="cam_1")

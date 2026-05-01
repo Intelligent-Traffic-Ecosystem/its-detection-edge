@@ -107,11 +107,13 @@ class EventSerializer:
             return bbox
         if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
             x1, y1, x2, y2 = bbox[:4]
+            x_min, x_max = (x1, x2) if x1 <= x2 else (x2, x1)
+            y_min, y_max = (y1, y2) if y1 <= y2 else (y2, y1)
             return {
-                "x": round(x1, 2),
-                "y": round(y1, 2),
-                "w": round(x2 - x1, 2),
-                "h": round(y2 - y1, 2),
+                "x": round(x_min, 2),
+                "y": round(y_min, 2),
+                "w": round(x_max - x_min, 2),
+                "h": round(y_max - y_min, 2),
             }
 
         return {}
