@@ -2,13 +2,18 @@
   "camera_id": "cam_01",
   "lanes": [
     {
-      "id": "lane_1",
-      "polygon": [[0, 0], [100, 0], [100, 100], [0, 100]],
+      "id": "lane_left",
+      "polygon": [[0, 260], [426, 260], [426, 720], [0, 720]],
       "direction": "inbound"
     },
     {
-      "id": "lane_2",
-      "polygon": [[100, 0], [200, 0], [200, 100], [100, 100]],
+      "id": "lane_center",
+      "polygon": [[426, 260], [853, 260], [853, 720], [426, 720]],
+      "direction": "inbound"
+    },
+    {
+      "id": "lane_right",
+      "polygon": [[853, 260], [1280, 260], [1280, 720], [853, 720]],
       "direction": "outbound"
     }
   ]
