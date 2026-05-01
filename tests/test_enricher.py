@@ -95,10 +95,10 @@ def test_serialize_event_bbox_fallback(serializer):
     assert event["centroid"] == {"x": 5.0, "y": 5.0}
     assert event["lane_id"] == "lane_1"
 
-    swapped_bbox_vehicle = {**fake_vehicle, "bbox": [10, 10, 0, 0]}
-    swapped_bbox_event = serializer.serialize_event(swapped_bbox_vehicle, camera_id="cam_1")
-    assert swapped_bbox_event["bbox"] == {"x": 0, "y": 0, "w": 10, "h": 10}
-    assert swapped_bbox_event["centroid"] == {"x": 5.0, "y": 5.0}
+    reversed_bbox_vehicle = {**fake_vehicle, "bbox": [10, 10, 0, 0]}
+    reversed_bbox_event = serializer.serialize_event(reversed_bbox_vehicle, camera_id="cam_1")
+    assert reversed_bbox_event["bbox"] == {"x": 0, "y": 0, "w": 10, "h": 10}
+    assert reversed_bbox_event["centroid"] == {"x": 5.0, "y": 5.0}
 
 def test_timestamp_formatting(serializer):
     fake_vehicle = {"id": 1, "centroid": {"x": 5.0, "y": 5.0}}

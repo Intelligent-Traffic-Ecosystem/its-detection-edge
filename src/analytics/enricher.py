@@ -53,10 +53,20 @@ class EventSerializer:
     def __init__(self, lane_enricher: LaneEnricher):
         self.lane_enricher = lane_enricher
 
+    def _normalize_xywh(self, bbox_xywh: Dict[str, float]) -> Dict[str, float]:
+        x = bbox_xywh["x"]
+        y = bbox_xywh["y"]
+        w = bbox_xywh["w"]
+        h = bbox_xywh["h"]
+        x_min, x_max = min(x, x + w), max(x, x + w)
+        y_min, y_max = min(y, y + h), max(y, y + h)
+        return {"x": x_min, "y": y_min, "w": x_max - x_min, "h": y_max - y_min}
+
     def _centroid_from_xywh(self, bbox_xywh: Dict[str, float]) -> Dict[str, float]:
+        normalized = self._normalize_xywh(bbox_xywh)
         return {
-            "x": round(bbox_xywh["x"] + bbox_xywh["w"] / 2, 2),
-            "y": round(bbox_xywh["y"] + bbox_xywh["h"] / 2, 2),
+            "x": round(normalized["x"] + normalized["w"] / 2, 2),
+            "y": round(normalized["y"] + normalized["h"] / 2, 2),
         }
 
     def _format_timestamp(self, ts: Union[float, int, str, datetime, None]) -> str:
@@ -100,11 +110,23 @@ class EventSerializer:
         """Extract or calculate bbox in xywh format."""
         bbox_xywh = vehicle.get("bbox_xywh")
         if isinstance(bbox_xywh, dict) and {"x", "y", "w", "h"}.issubset(bbox_xywh):
-            return bbox_xywh
+            normalized = self._normalize_xywh(bbox_xywh)
+            return {
+                "x": round(normalized["x"], 2),
+                "y": round(normalized["y"], 2),
+                "w": round(normalized["w"], 2),
+                "h": round(normalized["h"], 2),
+            }
 
         bbox = vehicle.get("bbox")
         if isinstance(bbox, dict) and {"x", "y", "w", "h"}.issubset(bbox):
-            return bbox
+            normalized = self._normalize_xywh(bbox)
+            return {
+                "x": round(normalized["x"], 2),
+                "y": round(normalized["y"], 2),
+                "w": round(normalized["w"], 2),
+                "h": round(normalized["h"], 2),
+            }
         if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
             x1, y1, x2, y2 = bbox[:4]
             x_min, x_max = min(x1, x2), max(x1, x2)
