@@ -8,20 +8,21 @@ class LaneEnricher:
         """
         self.lanes = lanes_config.get("lanes", [])
 
-    def map_to_lane(self, bbox: List[float]) -> Optional[str]:
+    def map_to_lane(self, centroid: Dict[str, float]) -> Optional[str]:
         """
-        Maps a bounding box (bottom-center point) to a lane ID.
-        bbox format: [x1, y1, x2, y2]
+        Maps a centroid point to a lane ID.
         """
-        # We use the bottom center of the bounding box as the reference point
-        x = (bbox[0] + bbox[2]) / 2
-        y = bbox[3]
+        x = centroid.get("x")
+        y = centroid.get("y")
         
+        if x is None or y is None:
+            return None
+            
         for lane in self.lanes:
             if self._is_point_in_polygon(x, y, lane.get("polygon", [])):
                 return lane.get("id")
         
-        return "unknown"
+        return None
 
     def _is_point_in_polygon(self, x: float, y: float, polygon: List[List[float]]) -> bool:
         """Ray Casting algorithm for point-in-polygon test."""
