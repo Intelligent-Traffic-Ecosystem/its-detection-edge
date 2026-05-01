@@ -81,6 +81,20 @@ def test_serialize_batch(serializer):
     assert events[0]["lane_id"] == "lane_1"
     assert events[1]["lane_id"] == "lane_2"
 
+def test_serialize_event_bbox_fallback(serializer):
+    fake_vehicle = {
+        "id": 7,
+        "class": "car",
+        "confidence": 0.5,
+        "bbox": [0, 0, 10, 10],
+    }
+
+    event = serializer.serialize_event(fake_vehicle, camera_id="cam_1")
+
+    assert event["bbox"] == {"x": 0, "y": 0, "w": 10, "h": 10}
+    assert event["centroid"] == {"x": 5.0, "y": 5.0}
+    assert event["lane_id"] == "lane_1"
+
 def test_timestamp_formatting(serializer):
     fake_vehicle = {"id": 1, "centroid": {"x": 5.0, "y": 5.0}}
     

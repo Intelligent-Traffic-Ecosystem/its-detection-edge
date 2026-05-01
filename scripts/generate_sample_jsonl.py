@@ -8,14 +8,15 @@ Usage : python scripts/generate_sample_jsonl.py
 Each line is one JSON event matching the Kafka event schema:
 {
   "camera_id": "cam_01",
-  "timestamp": 1714235000.123,
-  "vehicle": {
-    "id": 5,
-    "type": "car",
-    "speed": 32.4,
-    "lane": "lane_1",
-    "bbox": [x1, y1, x2, y2]
-  }
+  "timestamp": "2026-04-16T10:15:23.456Z",
+  "frame_id": 18422,
+  "vehicle_id": "veh_203",
+  "class": "car",
+  "confidence": 0.93,
+  "bbox": { "x": 412, "y": 178, "w": 82, "h": 46 },
+  "centroid": { "x": 453, "y": 201 },
+  "lane_id": "lane_1",
+  "speed_estimate": 34.2
 }
 """
 import sys
@@ -26,7 +27,7 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.ml.detector import TrafficDetector
-from src.analytics.enricher import LaneEnricher
+from src.analytics.enricher import LaneEnricher, EventSerializer
 from src.analytics.speed import SpeedCalculator
 import cv2
 
@@ -51,6 +52,7 @@ def main():
 
     detector   = TrafficDetector()
     enricher   = LaneEnricher(lanes_cfg)
+    serializer = EventSerializer(enricher)
     speed_calc = SpeedCalculator()
     cap        = cv2.VideoCapture(VIDEO_PATH)
 
@@ -82,20 +84,14 @@ def main():
 
             for obj in tracked:
                 current_ids.append(obj["id"])
-                obj["lane_id"]   = enricher.map_to_lane(obj["bbox"])
                 obj["speed_kmh"] = speed_calc.calculate_speed(obj["id"], obj["bbox"], timestamp)
 
-                event = {
-                    "camera_id": CAMERA_ID,
-                    "timestamp": timestamp,
-                    "vehicle": {
-                        "id":    obj["id"],
-                        "type":  obj["class"],
-                        "speed": obj["speed_kmh"],
-                        "lane":  obj["lane_id"],
-                        "bbox":  obj["bbox"]
-                    }
-                }
+                event = serializer.serialize_event(
+                    vehicle=obj,
+                    camera_id=CAMERA_ID,
+                    frame_id=obj.get("frame_id"),
+                    timestamp=timestamp,
+                )
                 out.write(json.dumps(event) + "\n")
                 event_count += 1
 

@@ -3,14 +3,13 @@ import time
 import json
 import logging
 import threading
-from datetime import datetime, timezone
 import cv2
 import numpy as np
 from dotenv import load_dotenv
 
 from src.capture.camera import CameraStream
 from src.ml.detector import TrafficDetector
-from src.analytics.enricher import LaneEnricher
+from src.analytics.enricher import LaneEnricher, EventSerializer
 from src.analytics.speed import SpeedCalculator
 from src.transport.kafka_producer import TrafficKafkaProducer
 from src.transport.offline_buffer import OfflineBuffer
@@ -73,6 +72,7 @@ def main():
 
     logging.info("Loading lane enrichment and speed modules...")
     enricher = LaneEnricher(lanes_config)
+    serializer = EventSerializer(enricher)
     speed_calc = SpeedCalculator(pixels_to_meters=pixels_to_meters)
 
     logging.info("Opening offline buffer and Kafka producer...")
@@ -105,7 +105,6 @@ def main():
 
             # 1. Detect and Track
             timestamp = time.time()
-            timestamp_iso = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
             tracked_objects = detector.detect_and_track(frame)
             detections_seen += len(tracked_objects)
             if tracked_objects:
@@ -115,26 +114,18 @@ def main():
             current_ids = []
             for obj in tracked_objects:
                 current_ids.append(obj["id"])
-                
-                # Map to lane
-                obj["lane_id"] = enricher.map_to_lane(obj["bbox"])
-                
+
                 # Calculate speed
                 obj["speed_kmh"] = speed_calc.calculate_speed(obj["id"], obj["bbox"], timestamp)
                 
                 # 3. Build SRS-style message and send
-                event = {
-                    "camera_id": camera_id,
-                    "timestamp": timestamp_iso,
-                    "frame_id": obj["frame_id"],
-                    "vehicle_id": obj["vehicle_id"],
-                    "class": obj["class"],
-                    "confidence": obj["confidence"],
-                    "bbox": obj["bbox_xywh"],
-                    "centroid": obj["centroid"],
-                    "lane_id": obj["lane_id"],
-                    "speed_estimate": obj["speed_kmh"],
-                }
+                event = serializer.serialize_event(
+                    vehicle=obj,
+                    camera_id=camera_id,
+                    frame_id=obj.get("frame_id"),
+                    timestamp=timestamp,
+                )
+                obj["lane_id"] = event["lane_id"]
                 if log_detections:
                     logging.info(
                         "Detection: vehicle_id=%s class=%s confidence=%.2f lane=%s speed=%.2f km/h",

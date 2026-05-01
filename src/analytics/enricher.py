@@ -13,6 +13,9 @@ class LaneEnricher:
         """
         Maps a centroid point to a lane ID.
         """
+        if not isinstance(centroid, dict):
+            return None
+
         x = centroid.get("x")
         y = centroid.get("y")
         
@@ -72,14 +75,46 @@ class EventSerializer:
         """Extract or calculate the centroid."""
         if "centroid" in vehicle and isinstance(vehicle["centroid"], dict):
             return vehicle["centroid"]
-        
+
+        bbox_xywh = vehicle.get("bbox_xywh")
+        if isinstance(bbox_xywh, dict) and {"x", "y", "w", "h"}.issubset(bbox_xywh):
+            return {
+                "x": round(bbox_xywh["x"] + bbox_xywh["w"] / 2, 2),
+                "y": round(bbox_xywh["y"] + bbox_xywh["h"] / 2, 2),
+            }
+
         # Calculate from bbox if available
         bbox = vehicle.get("bbox")
-        if bbox and len(bbox) >= 4:
+        if isinstance(bbox, dict) and {"x", "y", "w", "h"}.issubset(bbox):
+            return {
+                "x": round(bbox["x"] + bbox["w"] / 2, 2),
+                "y": round(bbox["y"] + bbox["h"] / 2, 2),
+            }
+        if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
             x1, y1, x2, y2 = bbox[:4]
             return {"x": round((x1 + x2) / 2, 2), "y": round((y1 + y2) / 2, 2)}
-            
+
         return {"x": 0.0, "y": 0.0}
+
+    def _get_bbox_xywh(self, vehicle: Dict[str, Any]) -> Dict[str, float]:
+        """Extract or calculate bbox in xywh format."""
+        bbox_xywh = vehicle.get("bbox_xywh")
+        if isinstance(bbox_xywh, dict) and {"x", "y", "w", "h"}.issubset(bbox_xywh):
+            return bbox_xywh
+
+        bbox = vehicle.get("bbox")
+        if isinstance(bbox, dict) and {"x", "y", "w", "h"}.issubset(bbox):
+            return bbox
+        if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
+            x1, y1, x2, y2 = bbox[:4]
+            return {
+                "x": round(x1, 2),
+                "y": round(y1, 2),
+                "w": round(x2 - x1, 2),
+                "h": round(y2 - y1, 2),
+            }
+
+        return {}
 
     def serialize_event(self, vehicle: Dict[str, Any], camera_id: str, frame_id: Optional[int] = None, timestamp: Union[float, int, str, datetime, None] = None) -> Dict[str, Any]:
         """Convert a raw detection dict into the strict event schema."""
@@ -93,7 +128,7 @@ class EventSerializer:
             "vehicle_id": vehicle.get("vehicle_id") or f"veh_{vehicle.get('id', 'unknown')}",
             "class": vehicle.get("class", vehicle.get("label", "unknown")),
             "confidence": vehicle.get("confidence", 0.0),
-            "bbox": vehicle.get("bbox_xywh", {}),
+            "bbox": self._get_bbox_xywh(vehicle),
             "centroid": centroid,
             "lane_id": lane_id,
             "speed_estimate": vehicle.get("speed_kmh", vehicle.get("speed", 0.0))
