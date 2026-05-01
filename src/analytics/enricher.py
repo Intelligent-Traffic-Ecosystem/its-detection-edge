@@ -53,6 +53,12 @@ class EventSerializer:
     def __init__(self, lane_enricher: LaneEnricher):
         self.lane_enricher = lane_enricher
 
+    def _centroid_from_xywh(self, bbox_xywh: Dict[str, float]) -> Dict[str, float]:
+        return {
+            "x": round(bbox_xywh["x"] + bbox_xywh["w"] / 2, 2),
+            "y": round(bbox_xywh["y"] + bbox_xywh["h"] / 2, 2),
+        }
+
     def _format_timestamp(self, ts: Union[float, int, str, datetime, None]) -> str:
         """Helper to ensure timestamp is UTC ISO 8601 ending in Z."""
         if ts is None:
@@ -78,18 +84,12 @@ class EventSerializer:
 
         bbox_xywh = vehicle.get("bbox_xywh")
         if isinstance(bbox_xywh, dict) and {"x", "y", "w", "h"}.issubset(bbox_xywh):
-            return {
-                "x": round(bbox_xywh["x"] + bbox_xywh["w"] / 2, 2),
-                "y": round(bbox_xywh["y"] + bbox_xywh["h"] / 2, 2),
-            }
+            return self._centroid_from_xywh(bbox_xywh)
 
         # Calculate from bbox if available
         bbox = vehicle.get("bbox")
         if isinstance(bbox, dict) and {"x", "y", "w", "h"}.issubset(bbox):
-            return {
-                "x": round(bbox["x"] + bbox["w"] / 2, 2),
-                "y": round(bbox["y"] + bbox["h"] / 2, 2),
-            }
+            return self._centroid_from_xywh(bbox)
         if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
             x1, y1, x2, y2 = bbox[:4]
             return {"x": round((x1 + x2) / 2, 2), "y": round((y1 + y2) / 2, 2)}
@@ -107,8 +107,8 @@ class EventSerializer:
             return bbox
         if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
             x1, y1, x2, y2 = bbox[:4]
-            x_min, x_max = (x1, x2) if x1 <= x2 else (x2, x1)
-            y_min, y_max = (y1, y2) if y1 <= y2 else (y2, y1)
+            x_min, x_max = min(x1, x2), max(x1, x2)
+            y_min, y_max = min(y1, y2), max(y1, y2)
             return {
                 "x": round(x_min, 2),
                 "y": round(y_min, 2),
