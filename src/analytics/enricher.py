@@ -98,3 +98,7 @@ class EventSerializer:
             "lane_id": lane_id,
             "speed_estimate": vehicle.get("speed_kmh", vehicle.get("speed", 0.0))
         }
+
+    def serialize_batch(self, vehicles: List[Dict[str, Any]], camera_id: str, frame_id: Optional[int] = None, timestamp: Union[float, int, str, datetime, None] = None) -> List[Dict[str, Any]]:
+        """Serialize a list of raw detections."""
+        return [self.serialize_event(v, camera_id, frame_id, timestamp) for v in vehicles]
