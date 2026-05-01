@@ -116,7 +116,7 @@ class EventSerializer:
                 "h": round(y_max - y_min, 2),
             }
 
-        return {}
+        return {"x": 0.0, "y": 0.0, "w": 0.0, "h": 0.0}
 
     def serialize_event(self, vehicle: Dict[str, Any], camera_id: str, frame_id: Optional[int] = None, timestamp: Union[float, int, str, datetime, None] = None) -> Dict[str, Any]:
         """Convert a raw detection dict into the strict event schema."""
