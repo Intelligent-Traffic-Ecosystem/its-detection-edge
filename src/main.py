@@ -22,11 +22,13 @@ def main():
     # Configuration
     camera_id = os.getenv("CAMERA_ID", "cam_01")
     camera_url = os.getenv("CAMERA_URL", "tests/test_video.mp4")
-    kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    kafka_servers = os.getenv("KAFKA_BROKERS") or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
+    lanes_path = os.getenv("LANES_CONFIG_PATH", "config/lanes.json")
+    buffer_db_path = os.getenv("BUFFER_DB_PATH", "data/offline_buffer.db")
     
     # Load lane config
-    with open("config/lanes.json", "r") as f:
+    with open(lanes_path, "r") as f:
         lanes_config = json.load(f)
     
     # Initialize components
@@ -36,7 +38,7 @@ def main():
     detector = TrafficDetector()
     enricher = LaneEnricher(lanes_config)
     speed_calc = SpeedCalculator()
-    buffer = OfflineBuffer()
+    buffer = OfflineBuffer(buffer_db_path)
     producer = TrafficKafkaProducer(kafka_servers, kafka_topic, buffer)
     
     # Start API server in background thread
