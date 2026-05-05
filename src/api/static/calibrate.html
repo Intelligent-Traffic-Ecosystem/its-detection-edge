@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ITS | Lane Calibrator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f1f5f9; }
+        .outfit { font-family: 'Outfit', sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .canvas-container { position: relative; display: inline-block; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        #canvas { cursor: crosshair; }
+        .btn-primary { background: linear-gradient(135deg, #3b82f6, #2563eb); transition: all 0.2s ease; }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4); }
+        .lane-card { border-left: 4px solid #3b82f6; transition: all 0.2s; }
+        .lane-card:hover { background: rgba(59, 130, 246, 0.1); }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold outfit bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">ITS Lane Calibrator</h1>
+                <p class="text-slate-400 text-sm mt-1">Configure detection zones for Edge AI devices</p>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="refreshSnapshot()" class="glass px-4 py-2 rounded-lg text-sm font-semibold hover:bg-slate-700">Refresh Snapshot</button>
+                <button onclick="saveConfig()" class="btn-primary px-6 py-2 rounded-lg text-sm font-bold shadow-lg">Save Configuration</button>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            <!-- Main Canvas Area -->
+            <div class="lg:col-span-3">
+                <div class="glass p-4 rounded-2xl">
+                    <div class="canvas-container rounded-xl overflow-hidden bg-slate-900" id="wrapper">
+                        <canvas id="canvas"></canvas>
+                    </div>
+                    <div class="mt-4 flex gap-6 text-xs text-slate-400 justify-center">
+                        <span class="flex items-center gap-2"><div class="w-3 h-3 bg-blue-500 rounded-full"></div> Click to add points</span>
+                        <span class="flex items-center gap-2"><div class="w-3 h-3 bg-emerald-500 rounded-full"></div> "N" to finish lane</span>
+                        <span class="flex items-center gap-2"><div class="w-3 h-3 bg-red-500 rounded-full"></div> "U" to undo</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sidebar Controls -->
+            <div class="lg:col-span-1 space-y-6">
+                <div class="glass p-6 rounded-2xl">
+                    <h3 class="text-lg font-semibold mb-4 outfit">Active Lanes</h3>
+                    <div id="laneList" class="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                        <!-- Lanes added here -->
+                        <div class="text-slate-500 text-sm italic">No lanes defined yet...</div>
+                    </div>
+                    
+                    <div class="mt-6 pt-6 border-t border-slate-700">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Current Lane ID</label>
+                        <input type="text" id="laneId" placeholder="lane_01" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button onclick="addCurrentLane()" class="w-full mt-3 glass py-2 rounded-lg text-xs font-bold hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/50">Complete Current Lane (N)</button>
+                    </div>
+                </div>
+
+                <div class="glass p-6 rounded-2xl border-blue-500/20">
+                    <h3 class="text-sm font-bold uppercase tracking-widest text-blue-400 mb-2">System Info</h3>
+                    <div class="text-xs space-y-1 text-slate-300">
+                        <p>Camera: <span id="sysCameraId" class="text-white">cam_01</span></p>
+                        <p>Resolution: <span id="sysRes" class="text-white">Waiting for image...</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let img = new Image();
+        let lanes = [];
+        let currentPoints = [];
+        let scale = 1;
+
+        function refreshSnapshot() {
+            img.src = '/snapshot?t=' + Date.now();
+        }
+
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            document.getElementById('sysRes').innerText = `${img.width} x ${img.height}`;
+            draw();
+        };
+
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.round((e.clientX - rect.left) * (canvas.width / rect.width));
+            const y = Math.round((e.clientY - rect.top) * (canvas.height / rect.height));
+            currentPoints.push([x, y]);
+            draw();
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'n') addCurrentLane();
+            if (e.key.toLowerCase() === 'u') { currentPoints.pop(); draw(); }
+        });
+
+        function addCurrentLane() {
+            if (currentPoints.length < 3) return alert('At least 3 points required');
+            const idInput = document.getElementById('laneId');
+            const id = idInput.value || `lane_${lanes.length + 1}`;
+            lanes.push({ id, polygon: [...currentPoints], direction: 'inbound' });
+            currentPoints = [];
+            idInput.value = '';
+            updateLaneList();
+            draw();
+        }
+
+        function removeLane(index) {
+            lanes.splice(index, 1);
+            updateLaneList();
+            draw();
+        }
+
+        function updateLaneList() {
+            const list = document.getElementById('laneList');
+            if (lanes.length === 0) {
+                list.innerHTML = '<div class="text-slate-500 text-sm italic">No lanes defined yet...</div>';
+                return;
+            }
+            list.innerHTML = lanes.map((l, i) => `
+                <div class="lane-card glass p-3 rounded-lg flex justify-between items-center bg-slate-800/50">
+                    <span class="text-sm font-semibold">${l.id}</span>
+                    <button onclick="removeLane(${i})" class="text-red-400 hover:text-red-200 text-xs px-2">Delete</button>
+                </div>
+            `).join('');
+        }
+
+        function draw() {
+            ctx.drawImage(img, 0, 0);
+            
+            // Draw finalized lanes
+            lanes.forEach(lane => {
+                drawPolygon(lane.polygon, true, 'rgba(16, 185, 129, 0.3)', '#10b981');
+            });
+
+            // Draw current lane
+            if (currentPoints.length > 0) {
+                drawPolygon(currentPoints, false, 'rgba(59, 130, 246, 0.3)', '#3b82f6');
+            }
+        }
+
+        function drawPolygon(points, closed, fill, stroke) {
+            ctx.beginPath();
+            ctx.moveTo(points[0][0], points[0][1]);
+            points.forEach(p => ctx.lineTo(p[0], p[1]));
+            if (closed) ctx.closePath();
+            
+            ctx.fillStyle = fill;
+            ctx.fill();
+            ctx.strokeStyle = stroke;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // Draw points
+            points.forEach(p => {
+                ctx.fillStyle = stroke;
+                ctx.beginPath();
+                ctx.arc(p[0], p[1], 5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        async function saveConfig() {
+            const config = {
+                camera_id: document.getElementById('sysCameraId').innerText,
+                lanes: lanes,
+                updated_at: new Date().toISOString()
+            };
+
+            try {
+                const res = await fetch('/config/lanes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                const data = await res.json();
+                if (data.status === 'success') alert('Configuration saved to device!');
+                else alert('Error saving: ' + data.detail);
+            } catch (e) {
+                alert('Connection error');
+            }
+        }
+
+        // Initial load
+        refreshSnapshot();
+    </script>
+</body>
+</html>

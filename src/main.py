@@ -14,7 +14,7 @@ from src.analytics.enricher import LaneEnricher
 from src.analytics.speed import SpeedCalculator
 from src.transport.kafka_producer import TrafficKafkaProducer
 from src.transport.offline_buffer import OfflineBuffer
-from src.api.server import DETECTION_COUNT, start_api_server
+from src.api.server import DETECTION_COUNT, INFERENCE_LATENCY, start_api_server
 
 # Configure logging. force=True keeps output visible when imported libraries
 # configure logging before this module starts.
@@ -26,7 +26,7 @@ def main():
     
     # Configuration
     camera_id = os.getenv("CAMERA_ID", "cam_01")
-    camera_url = os.getenv("CAMERA_URL", "tests/test.mp4")
+    camera_url = os.getenv("CAMERA_URL", "tests/test_video.mp4")
     kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
     model_path = os.getenv("MODEL_PATH", "yolov8n.pt")
@@ -79,8 +79,8 @@ def main():
     buffer = OfflineBuffer()
     producer = TrafficKafkaProducer(kafka_servers, kafka_topic, buffer, enabled=kafka_enabled)
     
-    # Start API server in background thread
-    threading.Thread(target=start_api_server, daemon=True).start()
+    # Start API server in background thread, passing the camera stream for snapshots
+    threading.Thread(target=start_api_server, args=(stream,), daemon=True).start()
     
     logging.info(f"Processing started for camera: {camera_id}")
 
@@ -106,7 +106,13 @@ def main():
             # 1. Detect and Track
             timestamp = time.time()
             timestamp_iso = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+            
+            # Measure inference latency
+            inf_start = time.time()
             tracked_objects = detector.detect_and_track(frame)
+            inf_duration = (time.time() - inf_start) * 1000  # ms
+            INFERENCE_LATENCY.set(inf_duration)
+            
             detections_seen += len(tracked_objects)
             if tracked_objects:
                 DETECTION_COUNT.inc(len(tracked_objects))

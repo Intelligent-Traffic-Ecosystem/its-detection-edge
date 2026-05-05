@@ -17,6 +17,7 @@ prometheus-client
 python-dotenv
 pydantic
 requests
+psutil
 
 # Testing
 pytest
