@@ -1,0 +1,28 @@
+# Ignore data and databases
+data/
+*.db
+*.sqlite
+
+# Ignore python environment
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore git
+.git
+.gitignore
+
+# Ignore IDE settings
+.vscode/
+.idea/
+.DS_Store
+
+# Ignore test assets (optional, but good to keep push light)
+# tests/test_video.mp4
+
+# Ignore images
+*.png
+*.jpg
+*.jpeg
