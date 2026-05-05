@@ -126,10 +126,10 @@ class TrafficKafkaProducer:
             from confluent_kafka import Producer as ConfluentProducer
             conf = {
                 'bootstrap.servers': self.bootstrap_servers,
-                'security.protocol': 'SASL_PLAINTEXT',
-                'sasl.mechanisms': 'PLAIN',
-                'sasl.username': 'user1',
-                'sasl.password': 'QRG5zbRwI5',
+                'security.protocol': os.getenv('KAFKA_SECURITY_PROTOCOL', 'SASL_PLAINTEXT'),
+                'sasl.mechanisms': os.getenv('KAFKA_SASL_MECHANISM', 'PLAIN'),
+                'sasl.username': os.getenv('KAFKA_USERNAME', 'its-b1-producer'),
+                'sasl.password': os.getenv('KAFKA_PASSWORD', 'ITS@B1prod2026'),
                 'client.id': 'its-edge-b1',
             }
             self._confluent = ConfluentProducer(conf)
