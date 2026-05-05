@@ -105,6 +105,7 @@ class TrafficKafkaProducer:
         self.topic = topic
         self.buffer = offline_buffer
         self.producer = None
+        self._confluent = None
         self.reconnect_interval = reconnect_interval
         self.last_connect_attempt = 0
         self.last_buffer_log = 0
@@ -122,19 +123,21 @@ class TrafficKafkaProducer:
 
         self.last_connect_attempt = now
         try:
-            self.producer = KafkaProducer(
-                bootstrap_servers=self.bootstrap_servers,
-                value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-                acks='all',          # spec: acks=all for durability
-                retries=3,
-                linger_ms=50,        # small batch window for edge efficiency
-                request_timeout_ms=3000,
-                api_version_auto_timeout_ms=2000,
-                max_block_ms=2000,
-            )
+            from confluent_kafka import Producer as ConfluentProducer
+            conf = {
+                'bootstrap.servers': self.bootstrap_servers,
+                'security.protocol': 'SASL_PLAINTEXT',
+                'sasl.mechanisms': 'PLAIN',
+                'sasl.username': 'user1',
+                'sasl.password': 'QRG5zbRwI5',
+                'client.id': 'its-edge-b1',
+            }
+            self._confluent = ConfluentProducer(conf)
+            self.producer = True  # flag: connected
             logging.info("Connected to Kafka successfully.")
         except Exception as e:
             logging.warning(f"Kafka broker unavailable: {e}")
+            self._confluent = None
             self.producer = None
 
     def send_event(self, event_data):
@@ -148,11 +151,12 @@ class TrafficKafkaProducer:
             self._connect()
 
         try:
-            if self.producer:
-                # Synchronous send for edge reliability (or use callback)
-                future = self.producer.send(self.topic, value=event_data)
-                future.get(timeout=2)
-                logging.info(f"Event sent to Kafka topic: {self.topic}")
+            if self._confluent:
+                self._confluent.produce(
+                    self.topic,
+                    value=json.dumps(event_data).encode('utf-8')
+                )
+                self._confluent.poll(0)
                 
                 # If we have a buffer, try to flush it now that we're connected
                 if self.buffer and self.buffer.count() > 0:
@@ -162,6 +166,7 @@ class TrafficKafkaProducer:
         except Exception as e:
             self._log_buffering_status(e)
             self.producer = None
+            self._confluent = None
             if self.buffer:
                 self.buffer.store(event_data)
 
@@ -186,9 +191,8 @@ class TrafficKafkaProducer:
         
         for record_id, payload in batch:
             try:
-                event = json.loads(payload)
-                future = self.producer.send(self.topic, value=event)
-                future.get(timeout=1)
+                self._confluent.produce(self.topic, value=payload)
+                self._confluent.poll(0)
                 sent_ids.append(record_id)
             except Exception as e:
                 logging.error(f"Failed to flush buffered event {record_id}: {e}")
@@ -199,6 +203,7 @@ class TrafficKafkaProducer:
             logging.info(f"Successfully flushed {len(sent_ids)} events from buffer.")
 
     def close(self):
-        if self.producer:
-            self.producer.flush()
-            self.producer.close()
+        if self._confluent:
+            self._confluent.flush()
+        self.producer = None
+        self._confluent = None

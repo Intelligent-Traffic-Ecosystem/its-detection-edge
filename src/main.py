@@ -117,7 +117,7 @@ def main():
                 current_ids.append(obj["id"])
                 
                 # Map to lane
-                obj["lane_id"] = enricher.map_to_lane(obj["bbox"])
+                obj["lane_id"] = enricher.map_to_lane(obj["centroid"])
                 
                 # Calculate speed
                 obj["speed_kmh"] = speed_calc.calculate_speed(obj["id"], obj["bbox"], timestamp)
