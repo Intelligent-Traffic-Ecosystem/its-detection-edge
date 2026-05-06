@@ -1,0 +1,61 @@
+@startuml 02_class_diagram_core_pipeline
+!theme plain
+skinparam classAttributeIconSize 0
+
+class CameraStream {
+    - camera_url: str
+    - cap: cv2.VideoCapture
+    - frame: ndarray
+    - lock: threading.Lock
+    + start()
+    + get_frame(): ndarray
+    + stop()
+    - _connect()
+}
+
+class TrafficDetector {
+    - model: YOLO
+    - confidence: float
+    - allowed_classes: list
+    + detect_and_track(frame): list
+    - _load_yolo_model()
+}
+
+class LaneEnricher {
+    - lanes: dict
+    + map_to_lane(centroid: tuple): str
+    - _is_point_in_polygon(point, polygon): bool
+}
+
+class SpeedCalculator {
+    - pixels_to_meters: float
+    - history: dict
+    + calculate_speed(vehicle_id, bbox, timestamp): float
+    + clear_old_tracks(active_track_ids: list)
+}
+
+class TrafficKafkaProducer {
+    - producer: Confluent/KafkaProducer
+    - topic: str
+    - buffer: OfflineBuffer
+    + send_event(event_data: dict)
+    + close()
+    - _flush_buffer()
+}
+
+class OfflineBuffer {
+    - conn: sqlite3.Connection
+    - _lock: threading.Lock
+    + store(event: dict)
+    + save(event_bytes: bytes)
+    + fetch_batch(limit: int): list
+    + delete_batch(ids: list)
+    + replay(producer)
+}
+
+CameraStream "1" --> "*" TrafficDetector : provides frames
+TrafficDetector --> LaneEnricher : centroids
+TrafficDetector --> SpeedCalculator : IDs/bboxes
+TrafficKafkaProducer "1" o-- "1" OfflineBuffer : fallback storage
+
+@enduml

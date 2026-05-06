@@ -1,0 +1,42 @@
+@startuml 03_sequence_normal_flow
+!theme plain
+autonumber
+
+participant "main.py\n(Event Loop)" as Main
+participant CameraStream as Cam
+participant TrafficDetector as Det
+participant SpeedCalculator as Spd
+participant LaneEnricher as Lane
+participant TrafficKafkaProducer as Prod
+participant "Kafka/B2" as Kafka
+
+Main -> Cam: get_frame()
+activate Cam
+return frame
+
+Main -> Det: detect_and_track(frame)
+activate Det
+return detections (bboxes, centroids, track_ids)
+
+loop for each detection
+    Main -> Spd: calculate_speed(vehicle_id, bbox, timestamp)
+    activate Spd
+    return speed_kmh
+    
+    Main -> Lane: map_to_lane(centroid)
+    activate Lane
+    return lane_id
+    
+    Main -> Main: construct event payload
+
+    Main -> Prod: send_event(event_data)
+    activate Prod
+    Prod -> Kafka: publish(topic, event_data)
+    activate Kafka
+    Kafka --> Prod: ack
+    deactivate Kafka
+    return success status
+end
+
+Main -> Spd: clear_old_tracks(active_ids)
+@enduml

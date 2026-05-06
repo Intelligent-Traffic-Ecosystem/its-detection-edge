@@ -1,0 +1,47 @@
+@startuml 04_sequence_kafka_failure
+!theme plain
+autonumber
+
+participant "main.py" as Main
+participant TrafficKafkaProducer as Prod
+participant OfflineBuffer as Buf
+participant "Kafka/B2" as Kafka
+
+Main -> Prod: send_event(event_data)
+activate Prod
+Prod -> Kafka: publish(topic, event_data)
+activate Kafka
+Kafka --x Prod: Connection Timeout / Error
+deactivate Kafka
+
+Prod -> Buf: store(event_data)
+activate Buf
+Buf --> Prod: stored in SQLite
+deactivate Buf
+return queued locally
+
+note over Main, Kafka: App loop continues without data loss
+
+Main -> Prod: send_event(new_event)
+activate Prod
+Prod -> Kafka: publish(topic, new_event)
+activate Kafka
+Kafka --> Prod: ack (Reconnection Success)
+deactivate Kafka
+
+Prod -> Prod: _flush_buffer()
+activate Prod
+Prod -> Buf: fetch_batch()
+activate Buf
+Buf --> Prod: buffered_events
+deactivate Buf
+
+loop for event in buffered_events
+    Prod -> Kafka: publish(buffered_event)
+    Kafka --> Prod: ack
+end
+Prod -> Buf: delete_batch(ids)
+deactivate Prod
+
+return all events resolved
+@enduml

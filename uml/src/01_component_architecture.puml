@@ -1,0 +1,30 @@
+@startuml 01_component_architecture
+!theme plain
+skinparam componentStyle uml2
+
+package "B1 Edge Detection Layer" {
+    component "CameraStream\n(Background Thread)" as Cam
+    component "TrafficDetector\n(YOLOv8)" as Det
+    component "SpeedCalculator\n(Bounding Box History)" as Spd
+    component "LaneEnricher\n(Spatial Mapping)" as Lane
+    component "TrafficKafkaProducer\n(Kafka Egress)" as Prod
+    component "OfflineBuffer\n(SQLite Disk)" as Buf
+    component "FastAPI Server\n(API, Metrics/Health)" as API
+}
+
+database "Camera Feed (RTSP/File)" as Feed
+cloud "Kafka Broker / B2" as Kafka
+
+Feed --> Cam : Video Frames
+Cam -right-> Det : get_frame()
+Det --> Spd : Tracking IDs & BBoxes
+Det --> Lane : Centroids
+Spd --> Prod : Speed (km/h)
+Lane --> Prod : Lane IDs
+Prod -right-> Kafka : JSON Telemetry
+Prod <--> Buf : Store/Replay on network drop
+
+API ..> Det : Read metrics (e.g., latency)
+API ..> Cam : Read snapshots
+
+@enduml

@@ -1,0 +1,30 @@
+@startuml 05_deployment_architecture
+!theme plain
+
+node "Edge Device (Raspberry Pi 5 / IPC)" as Edge {
+    node "Docker Engine / Balena" {
+        component "B1 Edge Container" {
+            artifact "Analytics Pipeline (main.py)" as Pipe
+            artifact "FastAPI (:8000)" as API
+            database "sqlite.db\n(OfflineBuffer)" as DB
+        }
+    }
+}
+
+device "Traffic IP Camera" as CamDev
+
+node "Cloud Infrastructure" as Cloud {
+    queue "Kafka / Confluent Cloud" as KafkaBroker
+    component "B2 Analytics Consumers" as B2
+}
+
+cloud "Balena Cloud" as BalenaCloud
+
+CamDev --> Pipe : RTSP stream / Frame feed
+Pipe --> KafkaBroker : TCP / TLS (JSON Telemetry)
+KafkaBroker --> B2 : Subscribes to topics
+Pipe <--> DB : Read/Write Fallback
+API <.. "1" Developer : HTTP (Monitor/Calibrate)
+Edge <.. BalenaCloud : OTA Updates
+
+@enduml
