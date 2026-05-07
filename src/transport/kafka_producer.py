@@ -123,17 +123,30 @@ class TrafficKafkaProducer:
 
         self.last_connect_attempt = now
         try:
-            from confluent_kafka import Producer as ConfluentProducer
-            conf = {
-                'bootstrap.servers': self.bootstrap_servers,
-                'security.protocol': os.getenv('KAFKA_SECURITY_PROTOCOL', 'SASL_PLAINTEXT'),
-                'sasl.mechanisms': os.getenv('KAFKA_SASL_MECHANISM', 'PLAIN'),
-                'sasl.username': os.getenv('KAFKA_USERNAME', 'its-b1-producer'),
-                'sasl.password': os.getenv('KAFKA_PASSWORD', 'ITS@B1prod2026'),
-                'client.id': 'its-edge-b1',
+            producer_config = {
+                "bootstrap_servers": self.bootstrap_servers,
+                "value_serializer": lambda v: json.dumps(v).encode('utf-8'),
+                "retries": 3,
+                "request_timeout_ms": 5000,
             }
-            self._confluent = ConfluentProducer(conf)
-            self.producer = True  # flag: connected
+
+            security_protocol = os.getenv("KAFKA_SECURITY_PROTOCOL")
+            if security_protocol:
+                producer_config["security_protocol"] = security_protocol
+
+            sasl_mechanism = os.getenv("KAFKA_SASL_MECHANISM")
+            sasl_username = os.getenv("KAFKA_USERNAME")
+            sasl_password = os.getenv("KAFKA_PASSWORD")
+            if sasl_mechanism and sasl_username and sasl_password:
+                producer_config["sasl_mechanism"] = sasl_mechanism
+                producer_config["sasl_plain_username"] = sasl_username
+                producer_config["sasl_plain_password"] = sasl_password
+
+            ssl_cafile = os.getenv("KAFKA_SSL_CA")
+            if ssl_cafile:
+                producer_config["ssl_cafile"] = ssl_cafile
+
+            self.producer = KafkaProducer(**producer_config)
             logging.info("Connected to Kafka successfully.")
         except Exception as e:
             logging.warning(f"Kafka broker unavailable: {e}")

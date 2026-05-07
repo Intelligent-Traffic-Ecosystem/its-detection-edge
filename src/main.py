@@ -27,7 +27,7 @@ def main():
     # Configuration
     camera_id = os.getenv("CAMERA_ID", "cam_01")
     camera_url = os.getenv("CAMERA_URL", "tests/test_video.mp4")
-    kafka_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    kafka_servers = os.getenv("KAFKA_BROKERS") or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     kafka_topic = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
     model_path = os.getenv("MODEL_PATH", "yolov8n.pt")
     confidence = float(os.getenv("DETECTION_CONFIDENCE", "0.4"))
@@ -41,7 +41,7 @@ def main():
     draw_lanes = os.getenv("DRAW_LANES", "true").lower() == "true"
     
     # Load lane config
-    with open("config/lanes.json", "r") as f:
+    with open(lanes_path, "r") as f:
         lanes_config = json.load(f)
     
     # Initialize components
