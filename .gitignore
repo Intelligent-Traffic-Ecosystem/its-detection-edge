@@ -16,3 +16,11 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+
+# Ignore all video files
+*.mp4
+*.mov
+*.avi
+*.wmv
+*.mkv

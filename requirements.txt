@@ -1,11 +1,12 @@
 # Core Vision & AI
 ultralytics==8.1.0
-opencv-python-headless
+opencv-python
 numpy
 
 # Transport & Communication
 kafka-python-ng
-sqlitedict
+confluent-kafka
+lapx           # ByteTrack dependency
 
 # API & Monitoring
 fastapi
@@ -16,3 +17,8 @@ prometheus-client
 python-dotenv
 pydantic
 requests
+psutil
+
+# Testing
+pytest
+pytest-cov
