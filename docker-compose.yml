@@ -29,6 +29,7 @@ services:
       - edge-data:/data
     environment:
       - CAMERA_ID=cam_02
+      - CAMERA_URL=/dev/video1
       - LANES_CONFIG_PATH=config/lanes.json
       - BUFFER_DB_PATH=/data/cam_02/offline_buffer.db
       - API_PORT=8002
