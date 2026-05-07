@@ -16,8 +16,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Skip tests
-        run: echo "Tests skipped"
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Docker build
+        run: docker build --file ./Dockerfile --tag test-image:${{ github.sha }} .
 
   build_push:
     runs-on: ubuntu-latest
