@@ -45,6 +45,7 @@ def build_event(camera_id, counter):
     return {
         "camera_id":  camera_id,
         "timestamp":  _timestamp(),
+        "frame_id":   counter,
         "vehicle_id": f"veh_{counter:05d}",
         "class":      cls,
         "confidence": confidence,
