@@ -19,10 +19,12 @@ the SpeedTracker fallback would compute matching values.
 Env vars:
   KAFKA_BOOTSTRAP_SERVERS  default localhost:9092
   KAFKA_TOPIC              default traffic.events.raw
-  MOCK_CAMERAS             default "cam_01,cam_02"
-  MOCK_EVENTS_PER_SEC      default 5  (per camera)
-  MOCK_CAMERA_SPEEDS       default "cam_01:45,cam_02:35"
-                           per-camera base speed in km/h
+  MOCK_CAMERAS             default cam_01..cam_08 (8 Colombo District cameras
+                           that match the B2 full-mock-server registry and
+                           the BFF static coord map).
+  MOCK_EVENTS_PER_SEC      default 2 per camera (16 events/s total at 8 cams)
+  MOCK_CAMERA_SPEEDS       per-camera base speed in km/h, defaults reflect
+                           each road's character (CBD slower, flyover faster).
 """
 
 from __future__ import annotations
@@ -44,11 +46,25 @@ log = logging.getLogger("mock-producer")
 
 BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 TOPIC = os.getenv("KAFKA_TOPIC", "traffic.events.raw")
-CAMERAS = [c.strip() for c in os.getenv("MOCK_CAMERAS", "cam_01,cam_02").split(",") if c.strip()]
-EVENTS_PER_SEC = float(os.getenv("MOCK_EVENTS_PER_SEC", "5"))
 
-# Per-camera base free-flow speed in km/h. Cameras not listed fall back to 40.
-_DEFAULT_SPEEDS = "cam_01:45,cam_02:35"
+# Default registry — matches B2 full-mock-server.js and mapFeatureMapper.js.
+_DEFAULT_CAMERAS = "cam_01,cam_02,cam_03,cam_04,cam_05,cam_06,cam_07,cam_08"
+CAMERAS = [c.strip() for c in os.getenv("MOCK_CAMERAS", _DEFAULT_CAMERAS).split(",") if c.strip()]
+EVENTS_PER_SEC = float(os.getenv("MOCK_EVENTS_PER_SEC", "2"))
+
+# Per-camera base free-flow speed in km/h. Roads differ: a CBD intersection
+# moves at ~25 km/h, a flyover sees 55, suburban A-roads ~50. Cameras not in
+# the list fall back to 40 km/h.
+_DEFAULT_SPEEDS = (
+    "cam_01:45,"   # Galle Rd, Bambalapitiya — busy arterial
+    "cam_02:35,"   # Kandy Rd, Kelaniya junction — junction-bound
+    "cam_03:25,"   # Colombo Fort, Main St — CBD, slow
+    "cam_04:40,"   # Nugegoda, High Level Rd — busy A4 stretch
+    "cam_05:55,"   # Rajagiriya Flyover — free-flow, elevated
+    "cam_06:50,"   # Maharagama Junction, A4 — suburban
+    "cam_07:35,"   # Borella, D.S. Senanayake — mixed urban
+    "cam_08:40"    # Wellawatte, Galle Rd South — urban arterial
+)
 CAMERA_BASES: dict[str, float] = {}
 for entry in os.getenv("MOCK_CAMERA_SPEEDS", _DEFAULT_SPEEDS).split(","):
     if ":" in entry:
@@ -109,13 +125,20 @@ class Camera:
     veh_counter: int = 0
     active: list[Vehicle] = field(default_factory=list)
 
+    @property
+    def congestion_target(self) -> float:
+        # Slow-road cameras (CBD, 25 km/h) sit higher on the congestion curve;
+        # flyovers (55 km/h) sit lower. Maps base_speed ∈ [25, 60] → target
+        # ∈ [~0.55, ~0.15] linearly, then clamps.
+        target = 0.55 - (self.base_speed_kmh - 25.0) * (0.40 / 35.0)
+        return max(0.10, min(0.65, target))
+
     def _drift_congestion(self) -> None:
-        # AR(1) toward a mild-traffic baseline (~0.35) with small noise.
-        # Produces gentle peaks and troughs over tens of seconds.
-        target = 0.35
+        # AR(1) toward the per-camera baseline with small noise. Produces
+        # gentle peaks and troughs over tens of seconds.
         self.congestion = max(
             0.0,
-            min(1.0, 0.97 * self.congestion + 0.03 * target + random.gauss(0, 0.04)),
+            min(1.0, 0.97 * self.congestion + 0.03 * self.congestion_target + random.gauss(0, 0.04)),
         )
 
     def _spawn_rate(self) -> float:
